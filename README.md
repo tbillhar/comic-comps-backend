@@ -25,13 +25,69 @@ The API will be available at `http://127.0.0.1:8000`.
 - `GET /health` returns service health.
 - `GET /comps` returns sample comparable comic sales.
 - `GET /comps?title=spider&issue_number=300` filters comparable sales by title and issue.
+- `POST /comps` searches comparable sales using a JSON request body.
 
 Interactive API docs are available at `/docs` when the server is running.
+
+### `POST /comps`
+
+Request:
+
+```json
+{
+  "title": "Amazing Spider-Man",
+  "issue_number": "300",
+  "grade": "CGC 9.8",
+  "max_results": 10
+}
+```
+
+Response:
+
+```json
+{
+  "query": {
+    "title": "Amazing Spider-Man",
+    "issue_number": "300",
+    "grade": "CGC 9.8",
+    "max_results": 10
+  },
+  "count": 1,
+  "comps": [
+    {
+      "id": "asm-300-cgc-9-8-2026-01",
+      "title": "Amazing Spider-Man",
+      "issue_number": "300",
+      "grade": "CGC 9.8",
+      "sale_price": "7200.00",
+      "sale_date": "2026-01-15",
+      "source": "sample"
+    }
+  ]
+}
+```
+
+Validation errors return FastAPI's standard `422` response with a `detail` array describing the invalid fields.
+
+## CORS
+
+Local frontend origins are allowed by default:
+
+- `http://localhost:3000`
+- `http://localhost:5173`
+- `http://127.0.0.1:3000`
+- `http://127.0.0.1:5173`
+
+Set deployed frontend origins with a comma-separated `CORS_ORIGINS` environment variable:
+
+```powershell
+$env:CORS_ORIGINS = "https://your-frontend.example.com"
+```
 
 ## Tests
 
 ```powershell
-pytest
+python -m pytest
 ```
 
 ## Cloud Run Deployment
@@ -54,3 +110,5 @@ To deploy from a local Docker build instead, replace `PROJECT_ID` in `service.ya
 ```powershell
 gcloud run services replace service.yaml --region us-central1
 ```
+
+After deployment, use the Cloud Run service URL as the frontend API base URL.

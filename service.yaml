@@ -12,3 +12,5 @@ spec:
           env:
             - name: ENVIRONMENT
               value: production
+            - name: CORS_ORIGINS
+              value: https://YOUR_FRONTEND_DOMAIN

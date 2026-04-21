@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Query
 
-from app.models import ComicComp, ComicCompList
+from app.models import ComicComp, ComicCompList, ComicCompQuery, ComicCompSearchResponse
 
 
 router = APIRouter(prefix="/comps", tags=["comps"])
@@ -36,6 +36,29 @@ def list_comps(
     title: str | None = Query(default=None, description="Optional case-insensitive title filter."),
     issue_number: str | None = Query(default=None, description="Optional exact issue number filter."),
 ) -> ComicCompList:
+    return ComicCompList(comps=_filter_comps(title=title, issue_number=issue_number))
+
+
+@router.post("", response_model=ComicCompSearchResponse)
+def search_comps(query: ComicCompQuery) -> ComicCompSearchResponse:
+    comps = _filter_comps(
+        title=query.title,
+        issue_number=query.issue_number,
+        grade=query.grade,
+    )[: query.max_results]
+
+    return ComicCompSearchResponse(
+        query=query,
+        count=len(comps),
+        comps=comps,
+    )
+
+
+def _filter_comps(
+    title: str | None = None,
+    issue_number: str | None = None,
+    grade: str | None = None,
+) -> list[ComicComp]:
     comps = SAMPLE_COMPS
 
     if title:
@@ -45,4 +68,8 @@ def list_comps(
     if issue_number:
         comps = [comp for comp in comps if comp.issue_number == issue_number]
 
-    return ComicCompList(comps=comps)
+    if grade:
+        grade_query = grade.casefold()
+        comps = [comp for comp in comps if comp.grade.casefold() == grade_query]
+
+    return comps
