@@ -13,6 +13,6 @@ spec:
             - name: ENVIRONMENT
               value: production
             - name: CORS_ORIGINS
-              value: https://YOUR_FRONTEND_DOMAIN
+              value: https://jolly-longma-5797b4.netlify.app
             - name: COMPS_PROVIDER
               value: sample

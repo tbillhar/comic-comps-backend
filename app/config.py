@@ -6,6 +6,7 @@ DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
+    "https://jolly-longma-5797b4.netlify.app",
 ]
 
 DEFAULT_COMPS_PROVIDER = "sample"

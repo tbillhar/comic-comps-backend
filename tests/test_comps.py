@@ -120,8 +120,25 @@ def test_cors_allows_local_frontend_origin() -> None:
         headers={
             "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
         },
     )
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "content-type" in response.headers["access-control-allow-headers"].lower()
+
+
+def test_cors_allows_deployed_netlify_frontend_origin() -> None:
+    response = client.options(
+        "/comps",
+        headers={
+            "Origin": "https://jolly-longma-5797b4.netlify.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://jolly-longma-5797b4.netlify.app"
+    assert "content-type" in response.headers["access-control-allow-headers"].lower()
