@@ -1,19 +1,20 @@
 substitutions:
   _SERVICE_NAME: comic-comps-backend
   _REGION: us-central1
+  _IMAGE_TAG: latest
 
 steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - build
       - -t
-      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA
+      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_IMAGE_TAG}
       - .
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA
+      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_IMAGE_TAG}
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
@@ -22,7 +23,7 @@ steps:
       - deploy
       - ${_SERVICE_NAME}
       - --image
-      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA
+      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_IMAGE_TAG}
       - --region
       - ${_REGION}
       - --platform
@@ -30,4 +31,4 @@ steps:
       - --allow-unauthenticated
 
 images:
-  - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA
+  - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_IMAGE_TAG}

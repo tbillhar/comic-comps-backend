@@ -108,6 +108,12 @@ python -m pytest
 
 ## Cloud Run Deployment
 
+Current deployed backend URL:
+
+```text
+https://comic-comps-backend-7tckae75qq-uc.a.run.app
+```
+
 Build and deploy through Cloud Build:
 
 ```powershell
@@ -118,7 +124,26 @@ The default Cloud Build substitutions deploy the service as `comic-comps-backend
 Override them as needed:
 
 ```powershell
-gcloud builds submit --config cloudbuild.yaml --substitutions=_SERVICE_NAME=my-service,_REGION=us-east1
+gcloud builds submit --config cloudbuild.yaml --substitutions=_SERVICE_NAME=my-service,_REGION=us-east1,_IMAGE_TAG=latest
+```
+
+For commit-specific manual deploys from Cloud Shell:
+
+```bash
+IMAGE_TAG="$(git rev-parse --short HEAD)"
+gcloud builds submit --config cloudbuild.yaml --substitutions=_SERVICE_NAME=comic-comps-backend,_REGION=us-central1,_IMAGE_TAG="$IMAGE_TAG"
+```
+
+Verify a deployed backend:
+
+```bash
+BACKEND_URL="https://comic-comps-backend-7tckae75qq-uc.a.run.app"
+
+curl "$BACKEND_URL/health"
+
+curl -X POST "$BACKEND_URL/comps" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"X-Men 1 CGC 4.0","cert_type":"cgc","max_results":10}'
 ```
 
 To deploy from a local Docker build instead, replace `PROJECT_ID` in `service.yaml` with your Google Cloud project ID and apply it with:
