@@ -14,6 +14,7 @@ SAMPLE_COMPS = [
         sale_price=Decimal("6500.00"),
         sale_date=date(2026, 4, 1),
         source="sample",
+        url="https://example.com/x-men-1-cgc-4-0-2026-04-01",
     ),
     ComicComp(
         id="x-men-1-cgc-4-0-2026-03-28",
@@ -23,6 +24,7 @@ SAMPLE_COMPS = [
         sale_price=Decimal("6800.00"),
         sale_date=date(2026, 3, 28),
         source="sample",
+        url="https://example.com/x-men-1-cgc-4-0-2026-03-28",
     ),
     ComicComp(
         id="x-men-1-cgc-4-0-2026-03-18",
@@ -32,6 +34,7 @@ SAMPLE_COMPS = [
         sale_price=Decimal("7100.00"),
         sale_date=date(2026, 3, 18),
         source="sample",
+        url="https://example.com/x-men-1-cgc-4-0-2026-03-18",
     ),
     ComicComp(
         id="x-men-1-raw-2026-02-10",
@@ -41,6 +44,7 @@ SAMPLE_COMPS = [
         sale_price=Decimal("2200.00"),
         sale_date=date(2026, 2, 10),
         source="sample",
+        url="https://example.com/x-men-1-raw-2026-02-10",
     ),
     ComicComp(
         id="asm-300-cgc-9-8-2026-01",
@@ -50,6 +54,7 @@ SAMPLE_COMPS = [
         sale_price=Decimal("7200.00"),
         sale_date=date(2026, 1, 15),
         source="sample",
+        url="https://example.com/asm-300-cgc-9-8-2026-01",
     ),
     ComicComp(
         id="batman-423-cgc-9-6-2026-02",
@@ -59,6 +64,7 @@ SAMPLE_COMPS = [
         sale_price=Decimal("875.00"),
         sale_date=date(2026, 2, 3),
         source="sample",
+        url="https://example.com/batman-423-cgc-9-6-2026-02",
     ),
 ]
 

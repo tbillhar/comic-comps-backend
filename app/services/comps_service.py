@@ -1,4 +1,3 @@
-from decimal import Decimal
 from statistics import median
 
 from app.models import ComicComp, ComicCompQuery, ComicCompSearchResponse, CompSale
@@ -23,6 +22,7 @@ def search_comps(query: ComicCompQuery, provider: CompsProvider | None = None) -
             price=comp.sale_price,
             date=comp.sale_date,
             source=comp.source,
+            url=comp.url,
         )
         for comp in comps
     ]
@@ -31,7 +31,7 @@ def search_comps(query: ComicCompQuery, provider: CompsProvider | None = None) -
     return ComicCompSearchResponse(
         query=query.query,
         cert_type=query.cert_type,
-        median=Decimal(str(median(prices))) if prices else None,
+        median=median(prices) if prices else None,
         low=min(prices) if prices else None,
         high=max(prices) if prices else None,
         usable_count=len(sales),

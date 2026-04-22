@@ -52,22 +52,23 @@ Response:
 {
   "query": "X-Men 1 CGC 4.0",
   "cert_type": "cgc",
-  "median": "6800.00",
-  "low": "6500.00",
-  "high": "7100.00",
+  "median": 6800,
+  "low": 6500,
+  "high": 7100,
   "usable_count": 3,
   "sales": [
     {
       "title": "X-Men 1 CGC 4.0",
-      "price": "6500.00",
+      "price": 6500,
       "date": "2026-04-01",
-      "source": "sample"
+      "source": "sample",
+      "url": "https://example.com/x-men-1-cgc-4-0-2026-04-01"
     }
   ]
 }
 ```
 
-When no usable sales are found, `median`, `low`, and `high` are `null`, `usable_count` is `0`, and `sales` is an empty array.
+Money fields are JSON numbers, not strings. When no usable sales are found, `median`, `low`, and `high` are `null`, `usable_count` is `0`, and `sales` is an empty array.
 
 Validation errors return FastAPI's standard `422` response with a `detail` array describing the invalid fields.
 

@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 
 class CertType(StrEnum):
@@ -18,6 +18,11 @@ class ComicComp(BaseModel):
     sale_price: Decimal = Field(..., ge=0)
     sale_date: date
     source: str
+    url: str | None = None
+
+    @field_serializer("sale_price")
+    def serialize_sale_price(self, value: Decimal) -> float:
+        return float(value)
 
 
 class ComicCompQuery(BaseModel):
@@ -45,16 +50,17 @@ class ComicCompList(BaseModel):
 
 class CompSale(BaseModel):
     title: str
-    price: Decimal = Field(..., ge=0)
+    price: float = Field(..., ge=0)
     date: date
     source: str
+    url: str | None = None
 
 
 class ComicCompSearchResponse(BaseModel):
     query: str
     cert_type: CertType
-    median: Decimal | None
-    low: Decimal | None
-    high: Decimal | None
+    median: float | None
+    low: float | None
+    high: float | None
     usable_count: int
     sales: list[CompSale]

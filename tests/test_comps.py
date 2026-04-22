@@ -23,9 +23,10 @@ def test_list_comps_returns_sample_data() -> None:
     payload = response.json()
     assert "comps" in payload
     assert len(payload["comps"]) >= 1
-    assert {"title", "issue_number", "grade", "sale_price", "sale_date", "source"}.issubset(
+    assert {"title", "issue_number", "grade", "sale_price", "sale_date", "source", "url"}.issubset(
         payload["comps"][0].keys()
     )
+    assert isinstance(payload["comps"][0]["sale_price"], int | float)
 
 
 def test_list_comps_filters_by_title_and_issue() -> None:
@@ -51,16 +52,21 @@ def test_search_comps_returns_stable_contract() -> None:
     payload = response.json()
     assert payload["query"] == "X-Men 1 CGC 4.0"
     assert payload["cert_type"] == "cgc"
-    assert payload["median"] == "6800.00"
-    assert payload["low"] == "6500.00"
-    assert payload["high"] == "7100.00"
+    assert payload["median"] == 6800
+    assert payload["low"] == 6500
+    assert payload["high"] == 7100
+    assert isinstance(payload["median"], int | float)
+    assert isinstance(payload["low"], int | float)
+    assert isinstance(payload["high"], int | float)
     assert payload["usable_count"] == 3
     assert payload["sales"][0] == {
         "title": "X-Men 1 CGC 4.0",
-        "price": "6500.00",
+        "price": 6500,
         "date": "2026-04-01",
         "source": "sample",
+        "url": "https://example.com/x-men-1-cgc-4-0-2026-04-01",
     }
+    assert isinstance(payload["sales"][0]["price"], int | float)
 
 
 def test_search_comps_returns_empty_result_set() -> None:
