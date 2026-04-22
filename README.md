@@ -35,37 +35,39 @@ Request:
 
 ```json
 {
-  "title": "Amazing Spider-Man",
-  "issue_number": "300",
-  "grade": "CGC 9.8",
+  "query": "X-Men 1 CGC 4.0",
+  "cert_type": "cgc",
   "max_results": 10
 }
 ```
+
+`cert_type` must be one of:
+
+- `raw`
+- `cgc`
 
 Response:
 
 ```json
 {
-  "query": {
-    "title": "Amazing Spider-Man",
-    "issue_number": "300",
-    "grade": "CGC 9.8",
-    "max_results": 10
-  },
-  "count": 1,
-  "comps": [
+  "query": "X-Men 1 CGC 4.0",
+  "cert_type": "cgc",
+  "median": "6800.00",
+  "low": "6500.00",
+  "high": "7100.00",
+  "usable_count": 3,
+  "sales": [
     {
-      "id": "asm-300-cgc-9-8-2026-01",
-      "title": "Amazing Spider-Man",
-      "issue_number": "300",
-      "grade": "CGC 9.8",
-      "sale_price": "7200.00",
-      "sale_date": "2026-01-15",
+      "title": "X-Men 1 CGC 4.0",
+      "price": "6500.00",
+      "date": "2026-04-01",
       "source": "sample"
     }
   ]
 }
 ```
+
+When no usable sales are found, `median`, `low`, and `high` are `null`, `usable_count` is `0`, and `sales` is an empty array.
 
 Validation errors return FastAPI's standard `422` response with a `detail` array describing the invalid fields.
 

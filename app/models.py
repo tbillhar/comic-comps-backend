@@ -1,7 +1,13 @@
 from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
+
+
+class CertType(StrEnum):
+    RAW = "raw"
+    CGC = "cgc"
 
 
 class ComicComp(BaseModel):
@@ -15,19 +21,8 @@ class ComicComp(BaseModel):
 
 
 class ComicCompQuery(BaseModel):
-    title: str = Field(..., min_length=1, max_length=120, description="Comic title to search.")
-    issue_number: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=30,
-        description="Optional issue number to narrow the search.",
-    )
-    grade: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=30,
-        description="Optional grading label such as CGC 9.8.",
-    )
+    query: str = Field(..., min_length=1, max_length=160, description="Natural language comic search query.")
+    cert_type: CertType = Field(..., description="Certification mode selected by the user.")
     max_results: int = Field(
         default=10,
         ge=1,
@@ -35,12 +30,9 @@ class ComicCompQuery(BaseModel):
         description="Maximum number of comparable sales to return.",
     )
 
-    @field_validator("title", "issue_number", "grade")
+    @field_validator("query")
     @classmethod
-    def strip_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-
+    def strip_text(cls, value: str) -> str:
         stripped_value = value.strip()
         if not stripped_value:
             raise ValueError("Field cannot be blank.")
@@ -51,7 +43,18 @@ class ComicCompList(BaseModel):
     comps: list[ComicComp]
 
 
+class CompSale(BaseModel):
+    title: str
+    price: Decimal = Field(..., ge=0)
+    date: date
+    source: str
+
+
 class ComicCompSearchResponse(BaseModel):
-    query: ComicCompQuery
-    count: int
-    comps: list[ComicComp]
+    query: str
+    cert_type: CertType
+    median: Decimal | None
+    low: Decimal | None
+    high: Decimal | None
+    usable_count: int
+    sales: list[CompSale]
