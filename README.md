@@ -87,19 +87,35 @@ Set deployed frontend origins with a comma-separated `CORS_ORIGINS` environment 
 $env:CORS_ORIGINS = "https://your-frontend.example.com"
 ```
 
-## Comps Provider
+## Sold-Comps Provider
 
 The backend selects its comparable-sales source with `COMPS_PROVIDER`.
 
 ```powershell
-$env:COMPS_PROVIDER = "sample"
+$env:COMPS_PROVIDER = "apify"
 ```
 
-Current supported value:
+Current supported values:
 
+- `apify`: real eBay sold listing retrieval through the configured Apify actor.
 - `sample`: in-memory sample data used for development and contract testing.
 
-Future paid scraper/API providers can be added behind the same provider interface without changing the `POST /comps` frontend contract.
+The `apify` provider requires:
+
+```powershell
+$env:APIFY_API_TOKEN = "your-token"
+```
+
+Optional provider settings:
+
+```powershell
+$env:APIFY_ACTOR_ID = "caffein.dev~ebay-sold-listings"
+$env:APIFY_EBAY_SITE = "ebay.com"
+$env:APIFY_DAYS_TO_SCRAPE = "90"
+$env:APIFY_MAX_TOTAL_CHARGE_USD = "1"
+```
+
+The provider returns sold listings and the service keeps the `POST /comps` response contract stable.
 
 ## Tests
 
@@ -119,6 +135,22 @@ Build and deploy through Cloud Build:
 
 ```powershell
 gcloud builds submit --config cloudbuild.yaml
+```
+
+The Apify API token should be stored as a Cloud Run secret before deploying with the real provider:
+
+```bash
+PROJECT_NUMBER="$(gcloud projects describe "$(gcloud config get-value project)" --format='value(projectNumber)')"
+printf '%s' "$APIFY_API_TOKEN" | gcloud secrets create apify-api-token --data-file=-
+gcloud secrets add-iam-policy-binding apify-api-token \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+After the first secret creation, rotate/update it with:
+
+```bash
+printf '%s' "$APIFY_API_TOKEN" | gcloud secrets versions add apify-api-token --data-file=-
 ```
 
 The default Cloud Build substitutions deploy the service as `comic-comps-backend` in `us-central1`.

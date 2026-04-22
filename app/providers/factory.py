@@ -1,12 +1,25 @@
 from fastapi import HTTPException
 
 from app.config import get_comps_provider_name
+from app.providers.apify_provider import ApifySoldCompsProvider
 from app.providers.base import CompsProvider
 from app.providers.sample_provider import SampleCompsProvider
 
 
 def get_comps_provider() -> CompsProvider:
     provider_name = get_comps_provider_name()
+
+    if provider_name == "apify":
+        try:
+            return ApifySoldCompsProvider()
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "sold_comps_provider_not_configured",
+                    "message": str(exc),
+                },
+            ) from exc
 
     if provider_name == "sample":
         return SampleCompsProvider()

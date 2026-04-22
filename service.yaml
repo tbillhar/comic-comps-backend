@@ -15,4 +15,17 @@ spec:
             - name: CORS_ORIGINS
               value: https://jolly-longma-5797b4.netlify.app
             - name: COMPS_PROVIDER
-              value: sample
+              value: apify
+            - name: APIFY_ACTOR_ID
+              value: caffein.dev~ebay-sold-listings
+            - name: APIFY_EBAY_SITE
+              value: ebay.com
+            - name: APIFY_DAYS_TO_SCRAPE
+              value: "90"
+            - name: APIFY_MAX_TOTAL_CHARGE_USD
+              value: "1"
+            - name: APIFY_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: apify-api-token
+                  key: latest

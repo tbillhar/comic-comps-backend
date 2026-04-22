@@ -1,0 +1,144 @@
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from typing import Any
+from urllib.parse import quote
+
+import httpx
+from fastapi import HTTPException
+
+from app.config import (
+    DEFAULT_APIFY_DAYS_TO_SCRAPE,
+    DEFAULT_APIFY_EBAY_SITE,
+    DEFAULT_APIFY_MAX_TOTAL_CHARGE_USD,
+    get_env,
+    get_int_env,
+    get_required_env,
+)
+from app.models import CertType, ComicComp
+from app.providers.base import CompsProvider
+
+
+class ApifySoldCompsProvider(CompsProvider):
+    def __init__(self) -> None:
+        self.api_token = get_required_env("APIFY_API_TOKEN")
+        self.actor_id = get_env("APIFY_ACTOR_ID", "caffein.dev~ebay-sold-listings")
+        self.ebay_site = get_env("APIFY_EBAY_SITE", DEFAULT_APIFY_EBAY_SITE)
+        self.days_to_scrape = get_int_env("APIFY_DAYS_TO_SCRAPE", DEFAULT_APIFY_DAYS_TO_SCRAPE)
+        self.max_total_charge_usd = get_env("APIFY_MAX_TOTAL_CHARGE_USD", DEFAULT_APIFY_MAX_TOTAL_CHARGE_USD)
+        self.timeout_seconds = get_int_env("APIFY_TIMEOUT_SECONDS", 120)
+
+    def list_comps(self, title: str | None = None, issue_number: str | None = None) -> list[ComicComp]:
+        query = " ".join(part for part in [title, issue_number] if part) or "comics"
+        return self.search_comps(query=query, cert_type=CertType.CGC, max_results=10)
+
+    def search_comps(self, query: str, cert_type: CertType, max_results: int) -> list[ComicComp]:
+        items = self._fetch_items(query=query, max_results=max_results)
+        comps = [
+            comp
+            for item in items
+            if (comp := _item_to_comp(item)) is not None
+            and _cert_type_matches(comp.title, cert_type)
+        ]
+        return sorted(comps, key=lambda comp: comp.sale_date, reverse=True)[:max_results]
+
+    def _fetch_items(self, query: str, max_results: int) -> list[dict[str, Any]]:
+        url = (
+            "https://api.apify.com/v2/acts/"
+            f"{quote(self.actor_id, safe='~')}/run-sync-get-dataset-items"
+        )
+        params = {
+            "token": self.api_token,
+            "format": "json",
+            "clean": "true",
+            "maxItems": str(max_results),
+            "maxTotalChargeUsd": self.max_total_charge_usd,
+        }
+        payload = {
+            "keywords": [query],
+            "count": max_results,
+            "daysToScrape": self.days_to_scrape,
+            "ebaySite": self.ebay_site,
+            "sortOrder": "endedRecently",
+            "itemCondition": "any",
+            "currencyMode": "USD",
+            "detailedSearch": False,
+        }
+
+        try:
+            response = httpx.post(url, params=params, json=payload, timeout=self.timeout_seconds)
+            response.raise_for_status()
+            data = response.json()
+        except RuntimeError as exc:
+            raise exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "sold_comps_provider_error",
+                    "message": "Failed to retrieve sold comps from the configured provider.",
+                },
+            ) from exc
+
+        if not isinstance(data, list):
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "sold_comps_provider_invalid_response",
+                    "message": "Sold comps provider returned an unexpected response shape.",
+                },
+            )
+
+        return [item for item in data if isinstance(item, dict)]
+
+
+def _item_to_comp(item: dict[str, Any]) -> ComicComp | None:
+    title = _string_value(item, "title")
+    url = _string_value(item, "url")
+    item_id = _string_value(item, "itemId") or url or title
+    ended_at = _string_value(item, "endedAt")
+    price = _decimal_value(item, "soldPrice") or _decimal_value(item, "totalPrice")
+
+    if not title or not ended_at or price is None:
+        return None
+
+    try:
+        sale_date = datetime.fromisoformat(ended_at.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+    return ComicComp(
+        id=f"apify-{item_id}",
+        title=title,
+        issue_number="",
+        grade="",
+        sale_price=price,
+        sale_date=sale_date,
+        source="ebay",
+        url=url,
+    )
+
+
+def _string_value(item: dict[str, Any], key: str) -> str | None:
+    value = item.get(key)
+    if value is None:
+        return None
+    string_value = str(value).strip()
+    return string_value or None
+
+
+def _decimal_value(item: dict[str, Any], key: str) -> Decimal | None:
+    value = item.get(key)
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value).replace(",", ""))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _cert_type_matches(title: str, cert_type: CertType) -> bool:
+    normalized_title = title.casefold()
+    if cert_type == CertType.CGC:
+        return "cgc" in normalized_title
+
+    return "cgc" not in normalized_title

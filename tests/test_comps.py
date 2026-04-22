@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_comps_provider_name
@@ -7,6 +8,11 @@ from app.providers.sample_provider import SampleCompsProvider
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def use_sample_provider(monkeypatch):
+    monkeypatch.setenv("COMPS_PROVIDER", "sample")
 
 
 def test_health_check() -> None:
@@ -104,11 +110,74 @@ def test_search_comps_rejects_unknown_cert_type() -> None:
     assert response.json()["detail"][0]["loc"] == ["body", "cert_type"]
 
 
-def test_default_comps_provider_is_sample(monkeypatch) -> None:
+def test_default_comps_provider_is_apify(monkeypatch) -> None:
     monkeypatch.delenv("COMPS_PROVIDER", raising=False)
 
-    assert get_comps_provider_name() == "sample"
+    assert get_comps_provider_name() == "apify"
+
+
+def test_sample_comps_provider_can_be_selected(monkeypatch) -> None:
+    monkeypatch.setenv("COMPS_PROVIDER", "sample")
+
     assert isinstance(get_comps_provider(), SampleCompsProvider)
+
+
+def test_apify_provider_requires_api_token(monkeypatch) -> None:
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.delenv("APIFY_API_TOKEN", raising=False)
+
+    response = client.post("/comps", json={"query": "X-Men 1", "cert_type": "cgc"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "sold_comps_provider_not_configured"
+
+
+def test_apify_provider_normalizes_sold_sales(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, str]]:
+            return [
+                {
+                    "itemId": "123",
+                    "url": "https://www.ebay.com/itm/123",
+                    "title": "X-Men 1 CGC 4.0",
+                    "endedAt": "2026-04-01T12:00:00.000Z",
+                    "soldPrice": "6500",
+                },
+                {
+                    "itemId": "124",
+                    "url": "https://www.ebay.com/itm/124",
+                    "title": "X-Men 1 CGC 4.0",
+                    "endedAt": "2026-03-28T12:00:00.000Z",
+                    "soldPrice": "6800",
+                },
+            ]
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps", json={"query": "X-Men 1 CGC 4.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["cert_type"] == "cgc"
+    assert payload["median"] == 6650
+    assert payload["low"] == 6500
+    assert payload["high"] == 6800
+    assert payload["usable_count"] == 2
+    assert payload["sales"][0] == {
+        "title": "X-Men 1 CGC 4.0",
+        "price": 6500,
+        "date": "2026-04-01",
+        "source": "ebay",
+        "url": "https://www.ebay.com/itm/123",
+    }
 
 
 def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:
