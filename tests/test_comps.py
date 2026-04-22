@@ -1,6 +1,9 @@
 from fastapi.testclient import TestClient
 
+from app.config import get_comps_provider_name
 from app.main import app
+from app.providers.factory import get_comps_provider
+from app.providers.sample_provider import SampleCompsProvider
 
 
 client = TestClient(app)
@@ -93,6 +96,22 @@ def test_search_comps_rejects_unknown_cert_type() -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["body", "cert_type"]
+
+
+def test_default_comps_provider_is_sample(monkeypatch) -> None:
+    monkeypatch.delenv("COMPS_PROVIDER", raising=False)
+
+    assert get_comps_provider_name() == "sample"
+    assert isinstance(get_comps_provider(), SampleCompsProvider)
+
+
+def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:
+    monkeypatch.setenv("COMPS_PROVIDER", "unknown")
+
+    response = client.post("/comps", json={"query": "X-Men 1", "cert_type": "cgc"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "unsupported_comps_provider"
 
 
 def test_cors_allows_local_frontend_origin() -> None:

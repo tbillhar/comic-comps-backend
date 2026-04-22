@@ -14,3 +14,5 @@ spec:
               value: production
             - name: CORS_ORIGINS
               value: https://YOUR_FRONTEND_DOMAIN
+            - name: COMPS_PROVIDER
+              value: sample

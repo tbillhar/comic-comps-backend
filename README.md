@@ -86,6 +86,20 @@ Set deployed frontend origins with a comma-separated `CORS_ORIGINS` environment 
 $env:CORS_ORIGINS = "https://your-frontend.example.com"
 ```
 
+## Comps Provider
+
+The backend selects its comparable-sales source with `COMPS_PROVIDER`.
+
+```powershell
+$env:COMPS_PROVIDER = "sample"
+```
+
+Current supported value:
+
+- `sample`: in-memory sample data used for development and contract testing.
+
+Future paid scraper/API providers can be added behind the same provider interface without changing the `POST /comps` frontend contract.
+
 ## Tests
 
 ```powershell

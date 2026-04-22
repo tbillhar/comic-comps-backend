@@ -8,8 +8,14 @@ DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:5173",
 ]
 
+DEFAULT_COMPS_PROVIDER = "sample"
+
 
 def get_cors_origins() -> list[str]:
     raw_origins = os.getenv("CORS_ORIGINS", "")
     configured_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
     return configured_origins or DEFAULT_CORS_ORIGINS
+
+
+def get_comps_provider_name() -> str:
+    return os.getenv("COMPS_PROVIDER", DEFAULT_COMPS_PROVIDER).strip().casefold()
