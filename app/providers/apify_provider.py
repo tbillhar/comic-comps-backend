@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -32,12 +33,14 @@ class ApifySoldCompsProvider(CompsProvider):
         return self.search_comps(query=query, cert_type=CertType.CGC, max_results=10)
 
     def search_comps(self, query: str, cert_type: CertType, max_results: int) -> list[ComicComp]:
+        parsed_query = _parse_query(query, cert_type)
         items = self._fetch_items(query=query, max_results=max_results)
         comps = [
             comp
             for item in items
             if (comp := _item_to_comp(item)) is not None
             and _cert_type_matches(comp.title, cert_type)
+            and _matches_requested_comic(comp.title, parsed_query)
         ]
         return sorted(comps, key=lambda comp: comp.sale_date, reverse=True)[:max_results]
 
@@ -142,3 +145,77 @@ def _cert_type_matches(title: str, cert_type: CertType) -> bool:
         return "cgc" in normalized_title
 
     return "cgc" not in normalized_title
+
+
+def _parse_query(query: str, cert_type: CertType) -> dict[str, object]:
+    normalized_query = _normalize_text(query)
+    grade = _extract_grade(normalized_query) if cert_type == CertType.CGC else None
+    issue_number = _extract_issue_number(normalized_query)
+
+    title_terms = [
+        term
+        for term in normalized_query.split()
+        if term not in {"cgc", "raw"}
+        and term != grade
+        and term != issue_number
+        and not _is_grade_token(term)
+    ]
+
+    return {
+        "title_terms": title_terms,
+        "issue_number": issue_number,
+        "grade": grade,
+    }
+
+
+def _matches_requested_comic(title: str, parsed_query: dict[str, object]) -> bool:
+    normalized_title = _normalize_text(title)
+    title_terms = parsed_query["title_terms"]
+    issue_number = parsed_query["issue_number"]
+    grade = parsed_query["grade"]
+
+    return (
+        isinstance(title_terms, list)
+        and all(term in normalized_title.split() for term in title_terms)
+        and (not issue_number or _has_issue_number(normalized_title, str(issue_number)))
+        and (not grade or _has_grade(normalized_title, str(grade)))
+    )
+
+
+def _normalize_text(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+(?:\.[0-9]+)?", value.casefold()))
+
+
+def _extract_issue_number(normalized_query: str) -> str | None:
+    terms = normalized_query.split()
+    ignored_next = False
+    for index, term in enumerate(terms):
+        if ignored_next:
+            ignored_next = False
+            continue
+        if term in {"cgc", "raw"}:
+            ignored_next = term == "cgc"
+            continue
+        if term.isdigit():
+            return term
+
+    return None
+
+
+def _extract_grade(normalized_query: str) -> str | None:
+    match = re.search(r"\bcgc\s+([0-9](?:\.[0-9])?|10(?:\.0)?)\b", normalized_query)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _is_grade_token(term: str) -> bool:
+    return re.fullmatch(r"[0-9](?:\.[0-9])?|10(?:\.0)?", term) is not None
+
+
+def _has_issue_number(normalized_title: str, issue_number: str) -> bool:
+    return issue_number in normalized_title.split()
+
+
+def _has_grade(normalized_title: str, grade: str) -> bool:
+    return re.search(rf"\bcgc\s+{re.escape(grade)}\b", normalized_title) is not None

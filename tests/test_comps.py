@@ -180,6 +180,66 @@ def test_apify_provider_normalizes_sold_sales(monkeypatch) -> None:
     }
 
 
+def test_apify_provider_filters_unrelated_search_results(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, str]]:
+            return [
+                {
+                    "itemId": "hulk-4",
+                    "url": "https://www.ebay.com/itm/hulk-4",
+                    "title": "Marvel Incredible Hulk #4 1962 CGC 3.0 Intro of Mongu",
+                    "endedAt": "2026-04-19T12:00:00.000Z",
+                    "soldPrice": "433",
+                },
+                {
+                    "itemId": "jim-98",
+                    "url": "https://www.ebay.com/itm/jim-98",
+                    "title": "Journey Into Mystery 98 - CGC 3.0 - DOUBLE COVER",
+                    "endedAt": "2026-04-19T12:00:00.000Z",
+                    "soldPrice": "111",
+                },
+                {
+                    "itemId": "asm-72",
+                    "url": "https://www.ebay.com/itm/asm-72",
+                    "title": "Amazing Spider-Man 72 CGC 3.0 OW/White Pages",
+                    "endedAt": "2026-04-18T12:00:00.000Z",
+                    "soldPrice": "24",
+                },
+                {
+                    "itemId": "avengers-1",
+                    "url": "https://www.ebay.com/itm/avengers-1",
+                    "title": "Avengers #1 CGC 3.0 Mega Key",
+                    "endedAt": "2026-04-15T12:00:00.000Z",
+                    "soldPrice": "2800",
+                },
+                {
+                    "itemId": "spotlight-28",
+                    "url": "https://www.ebay.com/itm/spotlight-28",
+                    "title": "Marvel Spotlight #28 - 1976 - CGC Graded 3.0",
+                    "endedAt": "2026-04-16T12:00:00.000Z",
+                    "soldPrice": "50",
+                },
+            ]
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps", json={"query": "Avengers 1 CGC 3.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["usable_count"] == 1
+    assert payload["median"] == 2800
+    assert payload["sales"][0]["title"] == "Avengers #1 CGC 3.0 Mega Key"
+
+
 def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:
     monkeypatch.setenv("COMPS_PROVIDER", "unknown")
 
