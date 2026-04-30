@@ -280,6 +280,7 @@ def _classify_items(
         url = _string_value(item, "url")
         comp = _item_to_comp(item)
         reasons: list[str] = []
+        raw_price_fields = _extract_raw_price_fields(item)
 
         if comp is None:
             reasons.append("invalid_item_shape")
@@ -298,6 +299,10 @@ def _classify_items(
                 url=url,
                 included=included,
                 reasons=reasons or ["matched"],
+                parsed_price=float(comp.sale_price) if comp is not None else None,
+                raw_sold_price=_string_value(item, "soldPrice"),
+                raw_total_price=_string_value(item, "totalPrice"),
+                raw_price_fields=raw_price_fields,
             )
         )
 
@@ -372,3 +377,12 @@ def _has_matching_series_phrase(normalized_title: str, title_terms: list[str]) -
         start_index += 1
 
     return tokens[start_index : start_index + len(title_terms)] == title_terms
+
+
+def _extract_raw_price_fields(item: dict[str, Any]) -> dict[str, str | None]:
+    raw_fields: dict[str, str | None] = {}
+    for key, value in item.items():
+        normalized_key = key.casefold()
+        if "price" in normalized_key or "shipping" in normalized_key or "cost" in normalized_key:
+            raw_fields[key] = None if value is None else str(value)
+    return raw_fields

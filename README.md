@@ -81,6 +81,7 @@ Use this temporary diagnostics endpoint when the backend disagrees with a manual
 - raw item count from the provider
 - accepted count
 - per-item inclusion decisions with rejection reasons
+- raw provider price fields and the parsed price currently selected by the backend
 
 Example:
 

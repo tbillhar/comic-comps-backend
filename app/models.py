@@ -71,6 +71,10 @@ class CompDebugDecision(BaseModel):
     url: str | None = None
     included: bool
     reasons: list[str]
+    parsed_price: float | None = None
+    raw_sold_price: str | None = None
+    raw_total_price: str | None = None
+    raw_price_fields: dict[str, str | None] = Field(default_factory=dict)
 
 
 class ComicCompSearchDebugResponse(BaseModel):

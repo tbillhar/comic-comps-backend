@@ -340,6 +340,8 @@ def test_apify_debug_search_returns_rejection_reasons(monkeypatch) -> None:
                     "title": "Marvel Incredible Hulk #4 1962 CGC 3.0 Intro of Mongu",
                     "endedAt": "2026-04-19T12:00:00.000Z",
                     "soldPrice": "433",
+                    "totalPrice": "460",
+                    "shippingPrice": "27",
                 },
                 {
                     "itemId": "avengers-1",
@@ -347,6 +349,7 @@ def test_apify_debug_search_returns_rejection_reasons(monkeypatch) -> None:
                     "title": "Avengers #1 CGC 3.0 Mega Key",
                     "endedAt": "2026-04-15T12:00:00.000Z",
                     "soldPrice": "2800",
+                    "totalPrice": "2800",
                 },
             ]
 
@@ -368,8 +371,13 @@ def test_apify_debug_search_returns_rejection_reasons(monkeypatch) -> None:
     assert rejected["title"] == "Marvel Incredible Hulk #4 1962 CGC 3.0 Intro of Mongu"
     assert "missing_title_term:avengers" in rejected["reasons"]
     assert "issue_number_mismatch:1" in rejected["reasons"]
+    assert rejected["parsed_price"] == 433
+    assert rejected["raw_sold_price"] == "433"
+    assert rejected["raw_total_price"] == "460"
+    assert rejected["raw_price_fields"]["shippingPrice"] == "27"
     assert accepted["title"] == "Avengers #1 CGC 3.0 Mega Key"
     assert accepted["reasons"] == ["matched"]
+    assert accepted["parsed_price"] == 2800
 
 
 def test_apify_debug_search_rejects_giant_size_series_variant(monkeypatch) -> None:
