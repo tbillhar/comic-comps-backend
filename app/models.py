@@ -64,3 +64,21 @@ class ComicCompSearchResponse(BaseModel):
     high: float | None
     usable_count: int
     sales: list[CompSale]
+
+
+class CompDebugDecision(BaseModel):
+    title: str | None
+    url: str | None = None
+    included: bool
+    reasons: list[str]
+
+
+class ComicCompSearchDebugResponse(BaseModel):
+    query: str
+    cert_type: CertType
+    provider: str
+    attempted_queries: list[str]
+    fetch_limit: int
+    raw_item_count: int
+    accepted_count: int
+    decisions: list[CompDebugDecision]

@@ -26,6 +26,7 @@ The API will be available at `http://127.0.0.1:8000`.
 - `GET /comps` returns sample comparable comic sales.
 - `GET /comps?title=spider&issue_number=300` filters comparable sales by title and issue.
 - `POST /comps` searches comparable sales using a JSON request body.
+- `POST /comps/debug` returns provider retrieval and filtering diagnostics for a query.
 
 Interactive API docs are available at `/docs` when the server is running.
 
@@ -71,6 +72,23 @@ Response:
 Money fields are JSON numbers, not strings. When no usable sales are found, `median`, `low`, and `high` are `null`, `usable_count` is `0`, and `sales` is an empty array.
 
 Validation errors return FastAPI's standard `422` response with a `detail` array describing the invalid fields.
+
+### `POST /comps/debug`
+
+Use this temporary diagnostics endpoint when the backend disagrees with a manual eBay sold/completed search. It returns:
+
+- attempted provider queries
+- raw item count from the provider
+- accepted count
+- per-item inclusion decisions with rejection reasons
+
+Example:
+
+```bash
+curl -X POST "https://comic-comps-backend-7tckae75qq-uc.a.run.app/comps/debug" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"X-Men #1 CGC 4.0","cert_type":"cgc","max_results":10}'
+```
 
 ## CORS
 

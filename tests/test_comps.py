@@ -86,6 +86,18 @@ def test_search_comps_returns_empty_result_set() -> None:
     assert response.json()["sales"] == []
 
 
+def test_debug_search_comps_returns_sample_diagnostics() -> None:
+    response = client.post("/comps/debug", json={"query": "X-Men 1 CGC 4.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "sample"
+    assert payload["attempted_queries"] == ["X-Men 1 CGC 4.0"]
+    assert payload["accepted_count"] == 3
+    assert payload["raw_item_count"] >= 3
+    assert any(decision["included"] for decision in payload["decisions"])
+
+
 def test_search_comps_filters_by_cert_type() -> None:
     response = client.post("/comps", json={"query": "X-Men 1", "cert_type": "raw"})
 
@@ -313,6 +325,51 @@ def test_apify_provider_retries_with_normalized_query_when_no_matches(monkeypatc
     assert payload["usable_count"] == 1
     assert payload["median"] == 6900
     assert payload["sales"][0]["title"] == "X-Men #1 (Marvel, 1963) CGC 4.0"
+
+
+def test_apify_debug_search_returns_rejection_reasons(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, str]]:
+            return [
+                {
+                    "itemId": "hulk-4",
+                    "url": "https://www.ebay.com/itm/hulk-4",
+                    "title": "Marvel Incredible Hulk #4 1962 CGC 3.0 Intro of Mongu",
+                    "endedAt": "2026-04-19T12:00:00.000Z",
+                    "soldPrice": "433",
+                },
+                {
+                    "itemId": "avengers-1",
+                    "url": "https://www.ebay.com/itm/avengers-1",
+                    "title": "Avengers #1 CGC 3.0 Mega Key",
+                    "endedAt": "2026-04-15T12:00:00.000Z",
+                    "soldPrice": "2800",
+                },
+            ]
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps/debug", json={"query": "Avengers 1 CGC 3.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "apify"
+    assert payload["accepted_count"] == 1
+    rejected = next(decision for decision in payload["decisions"] if not decision["included"])
+    accepted = next(decision for decision in payload["decisions"] if decision["included"])
+    assert rejected["title"] == "Marvel Incredible Hulk #4 1962 CGC 3.0 Intro of Mongu"
+    assert "missing_title_term:avengers" in rejected["reasons"]
+    assert "issue_number_mismatch:1" in rejected["reasons"]
+    assert accepted["title"] == "Avengers #1 CGC 3.0 Mega Key"
+    assert accepted["reasons"] == ["matched"]
 
 
 def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:

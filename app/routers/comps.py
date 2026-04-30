@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Query
 
-from app.models import ComicCompList, ComicCompQuery, ComicCompSearchResponse
-from app.services.comps_service import list_sample_comps, search_comps as search_comps_service
+from app.models import ComicCompList, ComicCompQuery, ComicCompSearchDebugResponse, ComicCompSearchResponse
+from app.services.comps_service import (
+    debug_search_comps as debug_search_comps_service,
+    list_sample_comps,
+    search_comps as search_comps_service,
+)
 
 
 router = APIRouter(prefix="/comps", tags=["comps"])
@@ -18,3 +22,8 @@ def list_comps(
 @router.post("", response_model=ComicCompSearchResponse)
 def search_comps(query: ComicCompQuery) -> ComicCompSearchResponse:
     return search_comps_service(query)
+
+
+@router.post("/debug", response_model=ComicCompSearchDebugResponse)
+def debug_search_comps(query: ComicCompQuery) -> ComicCompSearchDebugResponse:
+    return debug_search_comps_service(query)

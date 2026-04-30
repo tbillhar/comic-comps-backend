@@ -15,7 +15,7 @@ from app.config import (
     get_int_env,
     get_required_env,
 )
-from app.models import CertType, ComicComp
+from app.models import CertType, ComicComp, ComicCompSearchDebugResponse, CompDebugDecision
 from app.providers.base import CompsProvider
 
 MIN_PROVIDER_FETCH_RESULTS = 50
@@ -36,18 +36,54 @@ class ApifySoldCompsProvider(CompsProvider):
         return self.search_comps(query=query, cert_type=CertType.CGC, max_results=10)
 
     def search_comps(self, query: str, cert_type: CertType, max_results: int) -> list[ComicComp]:
+        debug_payload = self._debug_payload(query=query, cert_type=cert_type, max_results=max_results)
+        comps = [
+            _item_to_comp(item)
+            for item in debug_payload["accepted_items"]
+        ]
+        return [comp for comp in comps if comp is not None][:max_results]
+
+    def debug_search(self, query: str, cert_type: CertType, max_results: int) -> ComicCompSearchDebugResponse:
+        debug_payload = self._debug_payload(query=query, cert_type=cert_type, max_results=max_results)
+        return ComicCompSearchDebugResponse(
+            query=query,
+            cert_type=cert_type,
+            provider="apify",
+            attempted_queries=debug_payload["attempted_queries"],
+            fetch_limit=debug_payload["fetch_limit"],
+            raw_item_count=debug_payload["raw_item_count"],
+            accepted_count=len(debug_payload["accepted_items"]),
+            decisions=debug_payload["decisions"],
+        )
+
+    def _debug_payload(self, query: str, cert_type: CertType, max_results: int) -> dict[str, Any]:
         parsed_query = _parse_query(query, cert_type)
         fetch_limit = _provider_fetch_limit(max_results)
+        attempted_queries = [query]
         items = self._fetch_items(query=query, max_results=fetch_limit)
-        comps = _filter_matching_comps(items, cert_type, parsed_query)
+        accepted_items, decisions = _classify_items(items, cert_type, parsed_query)
 
-        if not comps:
+        if not accepted_items:
             fallback_query = _fallback_query(query)
             if fallback_query != query:
+                attempted_queries.append(fallback_query)
                 fallback_items = self._fetch_items(query=fallback_query, max_results=fetch_limit)
-                comps = _filter_matching_comps(fallback_items, cert_type, parsed_query)
+                accepted_items, decisions = _classify_items(fallback_items, cert_type, parsed_query)
+                items = fallback_items
 
-        return sorted(comps, key=lambda comp: comp.sale_date, reverse=True)[:max_results]
+        accepted_items = sorted(
+            accepted_items,
+            key=lambda item: (_item_to_comp(item).sale_date if _item_to_comp(item) is not None else datetime.min.date()),
+            reverse=True,
+        )[:max_results]
+
+        return {
+            "attempted_queries": attempted_queries,
+            "fetch_limit": fetch_limit,
+            "raw_item_count": len(items),
+            "accepted_items": accepted_items,
+            "decisions": decisions,
+        }
 
     def _fetch_items(self, query: str, max_results: int) -> list[dict[str, Any]]:
         url = (
@@ -230,20 +266,65 @@ def _provider_fetch_limit(max_results: int) -> int:
     return min(MAX_PROVIDER_FETCH_RESULTS, max(MIN_PROVIDER_FETCH_RESULTS, max_results * 5))
 
 
-def _filter_matching_comps(
+def _classify_items(
     items: list[dict[str, Any]],
     cert_type: CertType,
     parsed_query: dict[str, object],
-) -> list[ComicComp]:
-    return [
-        comp
-        for item in items
-        if (comp := _item_to_comp(item)) is not None
-        and _cert_type_matches(comp.title, cert_type)
-        and _matches_requested_comic(comp.title, parsed_query)
-    ]
+) -> tuple[list[dict[str, Any]], list[CompDebugDecision]]:
+    accepted_items: list[dict[str, Any]] = []
+    decisions: list[CompDebugDecision] = []
+
+    for item in items:
+        title = _string_value(item, "title")
+        url = _string_value(item, "url")
+        comp = _item_to_comp(item)
+        reasons: list[str] = []
+
+        if comp is None:
+            reasons.append("invalid_item_shape")
+        else:
+            if not _cert_type_matches(comp.title, cert_type):
+                reasons.append("cert_type_mismatch")
+            reasons.extend(_match_reasons(comp.title, parsed_query))
+
+        included = comp is not None and not reasons
+        if included:
+            accepted_items.append(item)
+
+        decisions.append(
+            CompDebugDecision(
+                title=title,
+                url=url,
+                included=included,
+                reasons=reasons or ["matched"],
+            )
+        )
+
+    return accepted_items, decisions
 
 
 def _fallback_query(query: str) -> str:
     normalized = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9.]+", " ", query)).strip()
     return normalized or query
+
+
+def _match_reasons(title: str, parsed_query: dict[str, object]) -> list[str]:
+    normalized_title = _normalize_text(title)
+    normalized_tokens = normalized_title.split()
+    title_terms = parsed_query["title_terms"]
+    issue_number = parsed_query["issue_number"]
+    grade = parsed_query["grade"]
+    reasons: list[str] = []
+
+    if isinstance(title_terms, list):
+        for term in title_terms:
+            if term not in normalized_tokens:
+                reasons.append(f"missing_title_term:{term}")
+
+    if issue_number and not _has_issue_number(normalized_title, str(issue_number)):
+        reasons.append(f"issue_number_mismatch:{issue_number}")
+
+    if grade and not _has_grade(normalized_title, str(grade)):
+        reasons.append(f"grade_mismatch:{grade}")
+
+    return reasons

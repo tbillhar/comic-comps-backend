@@ -1,6 +1,8 @@
 from statistics import median
 
-from app.models import ComicComp, ComicCompQuery, ComicCompSearchResponse, CompSale
+from fastapi import HTTPException
+
+from app.models import ComicComp, ComicCompQuery, ComicCompSearchDebugResponse, ComicCompSearchResponse, CompSale
 from app.providers.base import CompsProvider
 from app.providers.factory import get_comps_provider
 
@@ -37,3 +39,24 @@ def search_comps(query: ComicCompQuery, provider: CompsProvider | None = None) -
         usable_count=len(sales),
         sales=sales,
     )
+
+
+def debug_search_comps(
+    query: ComicCompQuery,
+    provider: CompsProvider | None = None,
+) -> ComicCompSearchDebugResponse:
+    selected_provider = provider or get_comps_provider()
+    try:
+        return selected_provider.debug_search(
+            query=query.query,
+            cert_type=query.cert_type,
+            max_results=query.max_results,
+        )
+    except NotImplementedError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "debug_not_supported",
+                "message": "Debug search is not implemented for the configured provider.",
+            },
+        ) from exc

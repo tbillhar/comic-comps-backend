@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from app.models import CertType, ComicComp
+from app.models import CertType, ComicComp, ComicCompSearchDebugResponse, CompDebugDecision
 from app.providers.base import CompsProvider
 
 
@@ -92,6 +92,38 @@ class SampleCompsProvider(CompsProvider):
         ]
 
         return sorted(comps, key=lambda comp: comp.sale_date, reverse=True)[:max_results]
+
+    def debug_search(self, query: str, cert_type: CertType, max_results: int) -> ComicCompSearchDebugResponse:
+        query_terms = _search_terms(query, cert_type)
+        decisions = []
+
+        for comp in SAMPLE_COMPS:
+            reasons = []
+            if not _cert_type_matches(comp, cert_type):
+                reasons.append("cert_type_mismatch")
+            if not all(term in comp.title.casefold() for term in query_terms):
+                reasons.append("query_terms_missing")
+
+            decisions.append(
+                CompDebugDecision(
+                    title=comp.title,
+                    url=comp.url,
+                    included=not reasons,
+                    reasons=reasons or ["matched"],
+                )
+            )
+
+        accepted_count = sum(1 for decision in decisions if decision.included)
+        return ComicCompSearchDebugResponse(
+            query=query,
+            cert_type=cert_type,
+            provider="sample",
+            attempted_queries=[query],
+            fetch_limit=max_results,
+            raw_item_count=len(SAMPLE_COMPS),
+            accepted_count=accepted_count,
+            decisions=decisions,
+        )
 
 
 def _search_terms(query: str, cert_type: CertType) -> list[str]:
