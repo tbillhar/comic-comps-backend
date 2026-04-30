@@ -39,13 +39,14 @@ class ApifySoldCompsProvider(CompsProvider):
         parsed_query = _parse_query(query, cert_type)
         fetch_limit = _provider_fetch_limit(max_results)
         items = self._fetch_items(query=query, max_results=fetch_limit)
-        comps = [
-            comp
-            for item in items
-            if (comp := _item_to_comp(item)) is not None
-            and _cert_type_matches(comp.title, cert_type)
-            and _matches_requested_comic(comp.title, parsed_query)
-        ]
+        comps = _filter_matching_comps(items, cert_type, parsed_query)
+
+        if not comps:
+            fallback_query = _fallback_query(query)
+            if fallback_query != query:
+                fallback_items = self._fetch_items(query=fallback_query, max_results=fetch_limit)
+                comps = _filter_matching_comps(fallback_items, cert_type, parsed_query)
+
         return sorted(comps, key=lambda comp: comp.sale_date, reverse=True)[:max_results]
 
     def _fetch_items(self, query: str, max_results: int) -> list[dict[str, Any]]:
@@ -227,3 +228,22 @@ def _has_grade(normalized_title: str, grade: str) -> bool:
 
 def _provider_fetch_limit(max_results: int) -> int:
     return min(MAX_PROVIDER_FETCH_RESULTS, max(MIN_PROVIDER_FETCH_RESULTS, max_results * 5))
+
+
+def _filter_matching_comps(
+    items: list[dict[str, Any]],
+    cert_type: CertType,
+    parsed_query: dict[str, object],
+) -> list[ComicComp]:
+    return [
+        comp
+        for item in items
+        if (comp := _item_to_comp(item)) is not None
+        and _cert_type_matches(comp.title, cert_type)
+        and _matches_requested_comic(comp.title, parsed_query)
+    ]
+
+
+def _fallback_query(query: str) -> str:
+    normalized = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9.]+", " ", query)).strip()
+    return normalized or query
