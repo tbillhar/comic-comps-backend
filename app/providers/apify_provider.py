@@ -18,6 +18,9 @@ from app.config import (
 from app.models import CertType, ComicComp
 from app.providers.base import CompsProvider
 
+MIN_PROVIDER_FETCH_RESULTS = 50
+MAX_PROVIDER_FETCH_RESULTS = 100
+
 
 class ApifySoldCompsProvider(CompsProvider):
     def __init__(self) -> None:
@@ -34,7 +37,8 @@ class ApifySoldCompsProvider(CompsProvider):
 
     def search_comps(self, query: str, cert_type: CertType, max_results: int) -> list[ComicComp]:
         parsed_query = _parse_query(query, cert_type)
-        items = self._fetch_items(query=query, max_results=max_results)
+        fetch_limit = _provider_fetch_limit(max_results)
+        items = self._fetch_items(query=query, max_results=fetch_limit)
         comps = [
             comp
             for item in items
@@ -219,3 +223,7 @@ def _has_issue_number(normalized_title: str, issue_number: str) -> bool:
 
 def _has_grade(normalized_title: str, grade: str) -> bool:
     return re.search(rf"\bcgc\s+{re.escape(grade)}\b", normalized_title) is not None
+
+
+def _provider_fetch_limit(max_results: int) -> int:
+    return min(MAX_PROVIDER_FETCH_RESULTS, max(MIN_PROVIDER_FETCH_RESULTS, max_results * 5))

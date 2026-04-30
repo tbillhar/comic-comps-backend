@@ -240,6 +240,32 @@ def test_apify_provider_filters_unrelated_search_results(monkeypatch) -> None:
     assert payload["sales"][0]["title"] == "Avengers #1 CGC 3.0 Mega Key"
 
 
+def test_apify_provider_overfetches_before_local_filtering(monkeypatch) -> None:
+    captured_request: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, str]]:
+            return []
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        captured_request["params"] = kwargs["params"]
+        captured_request["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps", json={"query": "Avengers 1 CGC 3.0", "cert_type": "cgc", "max_results": 10})
+
+    assert response.status_code == 200
+    assert captured_request["params"]["maxItems"] == "50"
+    assert captured_request["json"]["count"] == 50
+
+
 def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:
     monkeypatch.setenv("COMPS_PROVIDER", "unknown")
 
