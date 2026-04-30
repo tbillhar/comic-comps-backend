@@ -372,6 +372,47 @@ def test_apify_debug_search_returns_rejection_reasons(monkeypatch) -> None:
     assert accepted["reasons"] == ["matched"]
 
 
+def test_apify_debug_search_rejects_giant_size_series_variant(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, str]]:
+            return [
+                {
+                    "itemId": "giant-size-1",
+                    "url": "https://www.ebay.com/itm/giant-size-1",
+                    "title": "Giant-Size X-Men #1 CGC 4.0 OW/W 1st app New Team",
+                    "endedAt": "2026-04-20T12:00:00.000Z",
+                    "soldPrice": "4200",
+                },
+                {
+                    "itemId": "xmen-1",
+                    "url": "https://www.ebay.com/itm/xmen-1",
+                    "title": "X-Men #1 (Marvel, 1963) CGC 4.0 OW Pages",
+                    "endedAt": "2026-04-19T12:00:00.000Z",
+                    "soldPrice": "6900",
+                },
+            ]
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps/debug", json={"query": "X-Men #1 CGC 4.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    giant_size = next(decision for decision in payload["decisions"] if decision["title"].startswith("Giant-Size"))
+    regular = next(decision for decision in payload["decisions"] if decision["title"].startswith("X-Men #1"))
+    assert giant_size["included"] is False
+    assert "series_phrase_mismatch" in giant_size["reasons"]
+    assert regular["included"] is True
+
+
 def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:
     monkeypatch.setenv("COMPS_PROVIDER", "unknown")
 

@@ -217,6 +217,7 @@ def _matches_requested_comic(title: str, parsed_query: dict[str, object]) -> boo
 
     return (
         isinstance(title_terms, list)
+        and _has_matching_series_phrase(normalized_title, title_terms)
         and all(term in normalized_title.split() for term in title_terms)
         and (not issue_number or _has_issue_number(normalized_title, str(issue_number)))
         and (not grade or _has_grade(normalized_title, str(grade)))
@@ -317,6 +318,8 @@ def _match_reasons(title: str, parsed_query: dict[str, object]) -> list[str]:
     reasons: list[str] = []
 
     if isinstance(title_terms, list):
+        if not _has_matching_series_phrase(normalized_title, title_terms):
+            reasons.append("series_phrase_mismatch")
         for term in title_terms:
             if term not in normalized_tokens:
                 reasons.append(f"missing_title_term:{term}")
@@ -357,3 +360,15 @@ def _candidate_queries(query: str, parsed_query: dict[str, object], cert_type: C
             unique_candidates.append(normalized)
 
     return unique_candidates
+
+
+def _has_matching_series_phrase(normalized_title: str, title_terms: list[str]) -> bool:
+    if not title_terms:
+        return True
+
+    tokens = normalized_title.split()
+    start_index = 0
+    while start_index < len(tokens) and tokens[start_index] in {"the"}:
+        start_index += 1
+
+    return tokens[start_index : start_index + len(title_terms)] == title_terms
