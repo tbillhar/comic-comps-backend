@@ -60,16 +60,16 @@ class ApifySoldCompsProvider(CompsProvider):
         parsed_query = _parse_query(query, cert_type)
         fetch_limit = _provider_fetch_limit(max_results)
         attempted_queries: list[str] = []
-        items: list[dict[str, Any]] = []
-        accepted_items: list[dict[str, Any]] = []
-        decisions: list[CompDebugDecision] = []
+        merged_items: list[dict[str, Any]] = []
+        accepted_items: list[dict[str, Any]]
+        decisions: list[CompDebugDecision]
 
         for candidate_query in _candidate_queries(query, parsed_query, cert_type):
             attempted_queries.append(candidate_query)
             items = self._fetch_items(query=candidate_query, max_results=fetch_limit)
-            accepted_items, decisions = _classify_items(items, cert_type, parsed_query)
-            if accepted_items or items:
-                break
+            merged_items = _merge_unique_items(merged_items, items)
+
+        accepted_items, decisions = _classify_items(merged_items, cert_type, parsed_query)
 
         accepted_items = sorted(
             accepted_items,
@@ -80,7 +80,7 @@ class ApifySoldCompsProvider(CompsProvider):
         return {
             "attempted_queries": attempted_queries,
             "fetch_limit": fetch_limit,
-            "raw_item_count": len(items),
+            "raw_item_count": len(merged_items),
             "accepted_items": accepted_items,
             "decisions": decisions,
         }
@@ -386,3 +386,26 @@ def _extract_raw_price_fields(item: dict[str, Any]) -> dict[str, str | None]:
         if "price" in normalized_key or "shipping" in normalized_key or "cost" in normalized_key:
             raw_fields[key] = None if value is None else str(value)
     return raw_fields
+
+
+def _merge_unique_items(existing_items: list[dict[str, Any]], new_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged_items = list(existing_items)
+    seen_keys = {_item_identity(item) for item in existing_items}
+
+    for item in new_items:
+        identity = _item_identity(item)
+        if identity in seen_keys:
+            continue
+        seen_keys.add(identity)
+        merged_items.append(item)
+
+    return merged_items
+
+
+def _item_identity(item: dict[str, Any]) -> str:
+    return (
+        _string_value(item, "itemId")
+        or _string_value(item, "url")
+        or _string_value(item, "title")
+        or repr(item)
+    )
