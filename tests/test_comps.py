@@ -295,10 +295,10 @@ def test_apify_provider_retries_with_normalized_query_when_no_matches(monkeypatc
         keyword = kwargs["json"]["keywords"][0]
         request_keywords.append(keyword)
 
-        if keyword == "X-Men #1 CGC 4.0":
+        if keyword in {"X-Men #1 CGC 4.0", "X Men 1 CGC 4.0", "x men 1 cgc 4.0"}:
             return FakeResponse([])
 
-        if keyword == "X Men 1 CGC 4.0":
+        if keyword == "x men 1 cgc":
             return FakeResponse(
                 [
                     {
@@ -321,7 +321,7 @@ def test_apify_provider_retries_with_normalized_query_when_no_matches(monkeypatc
 
     assert response.status_code == 200
     payload = response.json()
-    assert request_keywords == ["X-Men #1 CGC 4.0", "X Men 1 CGC 4.0"]
+    assert request_keywords == ["X-Men #1 CGC 4.0", "X Men 1 CGC 4.0", "x men 1 cgc 4.0", "x men 1 cgc"]
     assert payload["usable_count"] == 1
     assert payload["median"] == 6900
     assert payload["sales"][0]["title"] == "X-Men #1 (Marvel, 1963) CGC 4.0"

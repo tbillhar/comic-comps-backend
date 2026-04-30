@@ -59,17 +59,17 @@ class ApifySoldCompsProvider(CompsProvider):
     def _debug_payload(self, query: str, cert_type: CertType, max_results: int) -> dict[str, Any]:
         parsed_query = _parse_query(query, cert_type)
         fetch_limit = _provider_fetch_limit(max_results)
-        attempted_queries = [query]
-        items = self._fetch_items(query=query, max_results=fetch_limit)
-        accepted_items, decisions = _classify_items(items, cert_type, parsed_query)
+        attempted_queries: list[str] = []
+        items: list[dict[str, Any]] = []
+        accepted_items: list[dict[str, Any]] = []
+        decisions: list[CompDebugDecision] = []
 
-        if not accepted_items:
-            fallback_query = _fallback_query(query)
-            if fallback_query != query:
-                attempted_queries.append(fallback_query)
-                fallback_items = self._fetch_items(query=fallback_query, max_results=fetch_limit)
-                accepted_items, decisions = _classify_items(fallback_items, cert_type, parsed_query)
-                items = fallback_items
+        for candidate_query in _candidate_queries(query, parsed_query, cert_type):
+            attempted_queries.append(candidate_query)
+            items = self._fetch_items(query=candidate_query, max_results=fetch_limit)
+            accepted_items, decisions = _classify_items(items, cert_type, parsed_query)
+            if accepted_items or items:
+                break
 
         accepted_items = sorted(
             accepted_items,
@@ -328,3 +328,32 @@ def _match_reasons(title: str, parsed_query: dict[str, object]) -> list[str]:
         reasons.append(f"grade_mismatch:{grade}")
 
     return reasons
+
+
+def _candidate_queries(query: str, parsed_query: dict[str, object], cert_type: CertType) -> list[str]:
+    title_terms = parsed_query["title_terms"] if isinstance(parsed_query["title_terms"], list) else []
+    issue_number = parsed_query["issue_number"] if isinstance(parsed_query["issue_number"], str) else None
+    grade = parsed_query["grade"] if isinstance(parsed_query["grade"], str) else None
+
+    base_terms = [*title_terms, issue_number] if issue_number else [*title_terms]
+    base_query = " ".join(term for term in base_terms if term)
+    candidates = [
+        query,
+        _fallback_query(query),
+    ]
+
+    if cert_type == CertType.CGC and base_query:
+        if grade:
+            candidates.append(f"{base_query} cgc {grade}")
+        candidates.append(f"{base_query} cgc")
+
+    if base_query:
+        candidates.append(base_query)
+
+    unique_candidates: list[str] = []
+    for candidate in candidates:
+        normalized = candidate.strip()
+        if normalized and normalized not in unique_candidates:
+            unique_candidates.append(normalized)
+
+    return unique_candidates
