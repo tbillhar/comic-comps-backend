@@ -58,3 +58,27 @@ If running locally with Apify input:
 ```bash
 apify run
 ```
+
+## Deploy To Apify
+
+Recommended files for the Apify platform are already included:
+
+- [INPUT_SCHEMA.json](D:\Comic Comps\comic-comps-backend\comic-comps-backend\apify-actor\INPUT_SCHEMA.json)
+- [.actor/actor.json](D:\Comic Comps\comic-comps-backend\comic-comps-backend\apify-actor\.actor\actor.json)
+- [Dockerfile](D:\Comic Comps\comic-comps-backend\comic-comps-backend\apify-actor\Dockerfile)
+
+Typical flow:
+
+```bash
+cd apify-actor
+npm install
+apify login
+apify push
+```
+
+After the actor is created in Apify, note the actor ID and switch the backend to:
+
+```text
+APIFY_ACTOR_MODE=comic_comps_custom
+APIFY_ACTOR_ID=<your-username~your-actor-name>
+```

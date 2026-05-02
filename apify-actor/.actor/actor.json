@@ -1,0 +1,12 @@
+{
+  "actorSpecification": 1,
+  "name": "comic-comps-ebay-sold-actor",
+  "title": "Comic Comps eBay Sold Search",
+  "description": "Scrapes eBay sold/completed result cards and emits normalized rows for comic comps.",
+  "version": "0.1",
+  "meta": {
+    "templateId": "project_empty"
+  },
+  "input": "./../INPUT_SCHEMA.json",
+  "dockerfile": "./Dockerfile"
+}
