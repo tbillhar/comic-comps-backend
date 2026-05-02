@@ -1,0 +1,260 @@
+import { Actor, log } from "apify";
+import { PlaywrightCrawler } from "crawlee";
+
+await Actor.init();
+
+const input = await Actor.getInput() ?? {};
+
+const query = String(input.query ?? "").trim();
+const maxResults = clampInteger(input.maxResults, 50, 1, 200);
+const ebaySite = String(input.ebaySite ?? "ebay.com").trim() || "ebay.com";
+const currency = String(input.currency ?? "USD").trim() || "USD";
+const sort = String(input.sort ?? "endedRecently").trim() || "endedRecently";
+
+if (!query) {
+    throw new Error("Input field 'query' is required.");
+}
+
+const state = {
+    pushed: 0,
+    seenUrls: new Set(),
+};
+
+const crawler = new PlaywrightCrawler({
+    maxRequestsPerCrawl: 25,
+    headless: true,
+    requestHandlerTimeoutSecs: 120,
+    async requestHandler({ page, request, enqueueLinks, log: requestLog }) {
+        await page.waitForLoadState("domcontentloaded");
+
+        const extractedRows = await page.evaluate(() => {
+            const cards = Array.from(document.querySelectorAll(".srp-results .s-item"));
+
+            return cards.map((card) => {
+                const title = normalizeWhitespace(
+                    textFrom(card, [
+                        ".s-item__title",
+                        "[data-testid='x-refine__rightPanel--srp-results'] .s-item__title",
+                    ]),
+                );
+
+                const url =
+                    card.querySelector(".s-item__link")?.href?.trim() ??
+                    card.querySelector("a[href*='/itm/']")?.href?.trim() ??
+                    null;
+
+                const priceCandidates = Array.from(card.querySelectorAll(".s-item__price"))
+                    .map((node) => normalizeWhitespace(node.textContent ?? ""))
+                    .filter(Boolean);
+
+                const shippingCandidates = Array.from(
+                    card.querySelectorAll(".s-item__shipping, .s-item__logisticsCost"),
+                )
+                    .map((node) => normalizeWhitespace(node.textContent ?? ""))
+                    .filter(Boolean);
+
+                const dateCandidates = Array.from(
+                    card.querySelectorAll(".s-item__caption--signal, .s-item__title--tagblock, .POSITIVE"),
+                )
+                    .map((node) => normalizeWhitespace(node.textContent ?? ""))
+                    .filter(Boolean);
+
+                return {
+                    title,
+                    url,
+                    rawPriceText: chooseDisplayedPrice(priceCandidates),
+                    rawShippingText: shippingCandidates[0] ?? null,
+                    rawDateText: chooseSoldDate(dateCandidates),
+                };
+            });
+
+            function textFrom(root, selectors) {
+                for (const selector of selectors) {
+                    const value = root.querySelector(selector)?.textContent?.trim();
+                    if (value) {
+                        return value;
+                    }
+                }
+                return "";
+            }
+
+            function normalizeWhitespace(value) {
+                return value.replace(/\s+/g, " ").trim();
+            }
+
+            function chooseDisplayedPrice(candidates) {
+                const filtered = candidates.filter((candidate) => {
+                    const lowered = candidate.toLowerCase();
+                    return !lowered.includes("shop on ebay");
+                });
+
+                for (const candidate of filtered) {
+                    if (extractAmount(candidate) !== null) {
+                        return candidate;
+                    }
+                }
+
+                return filtered[0] ?? null;
+            }
+
+            function chooseSoldDate(candidates) {
+                for (const candidate of candidates) {
+                    if (/sold\s+[a-z]{3}\s+\d{1,2},\s+\d{4}/i.test(candidate)) {
+                        return candidate;
+                    }
+                }
+                return null;
+            }
+
+            function extractAmount(text) {
+                const match = text.match(/([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/);
+                return match ? match[1] : null;
+            }
+        });
+
+        for (const row of extractedRows) {
+            if (state.pushed >= maxResults) {
+                break;
+            }
+
+            const normalizedRow = normalizeRow(row, currency);
+            if (!normalizedRow) {
+                continue;
+            }
+            if (state.seenUrls.has(normalizedRow.url)) {
+                continue;
+            }
+
+            state.seenUrls.add(normalizedRow.url);
+            state.pushed += 1;
+            await Actor.pushData(normalizedRow);
+        }
+
+        const nextPageUrl = await page.evaluate(() => {
+            const nextLink =
+                document.querySelector("a[aria-label='Go to next search page']") ??
+                document.querySelector("a.pagination__next");
+            return nextLink?.href?.trim() ?? null;
+        });
+
+        if (nextPageUrl && state.pushed < maxResults) {
+            requestLog.info(`Queueing next page: ${nextPageUrl}`);
+            await enqueueLinks({
+                urls: [nextPageUrl],
+                forefront: false,
+            });
+        }
+    },
+});
+
+const startUrl = buildSoldSearchUrl({ query, ebaySite, sort });
+log.info(`Starting eBay sold/completed scrape for query '${query}'`, { startUrl, maxResults });
+
+await crawler.run([{ url: startUrl, uniqueKey: startUrl }]);
+
+await Actor.exit();
+
+function buildSoldSearchUrl({ query, ebaySite, sort }) {
+    const url = new URL(`https://www.${ebaySite}/sch/i.html`);
+    url.searchParams.set("_nkw", query);
+    url.searchParams.set("LH_Sold", "1");
+    url.searchParams.set("LH_Complete", "1");
+    url.searchParams.set("rt", "nc");
+    url.searchParams.set("_ipg", "240");
+
+    if (sort === "endedRecently") {
+        url.searchParams.set("_sop", "13");
+    }
+
+    return url.toString();
+}
+
+function normalizeRow(row, currency) {
+    const title = cleanString(row.title);
+    const url = cleanString(row.url);
+    const rawPriceText = cleanString(row.rawPriceText);
+    const rawShippingText = cleanString(row.rawShippingText);
+    const rawDateText = cleanString(row.rawDateText);
+
+    if (!title || !url || !rawPriceText || !rawDateText) {
+        return null;
+    }
+
+    const price = extractAmount(rawPriceText);
+    const shippingPrice = extractAmount(rawShippingText);
+    const saleDate = parseSoldDate(rawDateText);
+
+    if (!price || !saleDate) {
+        return null;
+    }
+
+    const totalPrice = shippingPrice ? formatAmount(Number(price) + Number(shippingPrice)) : price;
+    const itemId = extractItemId(url) ?? url;
+
+    return {
+        id: itemId,
+        title,
+        url,
+        saleDate,
+        price,
+        shippingPrice,
+        totalPrice,
+        currency,
+        rawPriceText,
+        rawShippingText,
+        rawDateText,
+    };
+}
+
+function cleanString(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const normalized = value.replace(/\s+/g, " ").trim();
+    return normalized || null;
+}
+
+function extractAmount(text) {
+    if (!text) {
+        return null;
+    }
+
+    const match = text.match(/([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/);
+    if (!match) {
+        return null;
+    }
+
+    return match[1].replace(/,/g, "");
+}
+
+function parseSoldDate(text) {
+    const match = text.match(/sold\s+([a-z]{3}\s+\d{1,2},\s+\d{4})/i);
+    if (!match) {
+        return null;
+    }
+
+    const parsedDate = new Date(`${match[1]} 00:00:00 UTC`);
+    if (Number.isNaN(parsedDate.getTime())) {
+        return null;
+    }
+
+    return parsedDate.toISOString();
+}
+
+function extractItemId(url) {
+    const match = url.match(/\/itm\/([0-9]+)/);
+    return match ? match[1] : null;
+}
+
+function formatAmount(value) {
+    return value.toFixed(2);
+}
+
+function clampInteger(value, fallback, min, max) {
+    const numericValue = Number.parseInt(String(value ?? fallback), 10);
+    if (Number.isNaN(numericValue)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, numericValue));
+}

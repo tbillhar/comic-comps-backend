@@ -152,6 +152,30 @@ The custom actor mode is expected to return item rows that include:
 It may also return `itemId`, `shippingPrice`, `totalPrice`, or a wrapped row with an `items` array.
 The backend normalizes that output back into the same `/comps` and `/comps/debug` response contract.
 
+## Custom Apify Actor
+
+This repo now includes a custom Apify actor scaffold in [apify-actor/README.md](D:\Comic Comps\comic-comps-backend\comic-comps-backend\apify-actor\README.md).
+
+That actor is intended to scrape the exact eBay sold/completed search result cards you manually compare against, then emit rows in the backend's `comic_comps_custom` format.
+
+When the actor is deployed in Apify, switch Cloud Run to:
+
+```powershell
+$env:APIFY_ACTOR_MODE = "comic_comps_custom"
+$env:APIFY_ACTOR_ID = "your-username~your-actor-name"
+```
+
+The custom actor currently emits:
+
+- `id`
+- `title`
+- `url`
+- `saleDate`
+- `price`
+- `shippingPrice`
+- `totalPrice`
+- raw display text fields for debugging
+
 ## Tests
 
 ```powershell

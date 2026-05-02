@@ -1,0 +1,15 @@
+{
+  "name": "comic-comps-ebay-sold-actor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Custom Apify actor for eBay sold/completed comic comps search results.",
+  "scripts": {
+    "start": "node src/main.mjs"
+  },
+  "dependencies": {
+    "apify": "^3.4.0",
+    "crawlee": "^3.13.4",
+    "playwright": "^1.52.0"
+  }
+}
