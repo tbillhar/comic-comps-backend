@@ -13,6 +13,7 @@
       "title": "Max Results",
       "type": "integer",
       "description": "Maximum number of sold rows to emit.",
+      "editor": "number",
       "default": 50,
       "minimum": 1,
       "maximum": 200
@@ -21,6 +22,7 @@
       "title": "Days To Scrape",
       "type": "integer",
       "description": "Unused by the actor URL directly, but retained for backend compatibility.",
+      "editor": "number",
       "default": 90,
       "minimum": 1,
       "maximum": 365
@@ -29,18 +31,21 @@
       "title": "eBay Site",
       "type": "string",
       "description": "eBay domain, for example ebay.com.",
+      "editor": "textfield",
       "default": "ebay.com"
     },
     "currency": {
       "title": "Currency",
       "type": "string",
       "description": "Currency hint for downstream consumers.",
+      "editor": "textfield",
       "default": "USD"
     },
     "sort": {
       "title": "Sort",
       "type": "string",
       "description": "Result sort mode.",
+      "editor": "select",
       "default": "endedRecently",
       "enum": [
         "endedRecently"
