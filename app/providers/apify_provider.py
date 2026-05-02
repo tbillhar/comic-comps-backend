@@ -8,6 +8,8 @@ import httpx
 from fastapi import HTTPException
 
 from app.config import (
+    DEFAULT_APIFY_ACTOR_ID,
+    DEFAULT_APIFY_ACTOR_MODE,
     DEFAULT_APIFY_DAYS_TO_SCRAPE,
     DEFAULT_APIFY_EBAY_SITE,
     DEFAULT_APIFY_MAX_TOTAL_CHARGE_USD,
@@ -25,7 +27,8 @@ MAX_PROVIDER_FETCH_RESULTS = 100
 class ApifySoldCompsProvider(CompsProvider):
     def __init__(self) -> None:
         self.api_token = get_required_env("APIFY_API_TOKEN")
-        self.actor_id = get_env("APIFY_ACTOR_ID", "caffein.dev~ebay-sold-listings")
+        self.actor_id = get_env("APIFY_ACTOR_ID", DEFAULT_APIFY_ACTOR_ID)
+        self.actor_mode = get_env("APIFY_ACTOR_MODE", DEFAULT_APIFY_ACTOR_MODE).casefold()
         self.ebay_site = get_env("APIFY_EBAY_SITE", DEFAULT_APIFY_EBAY_SITE)
         self.days_to_scrape = get_int_env("APIFY_DAYS_TO_SCRAPE", DEFAULT_APIFY_DAYS_TO_SCRAPE)
         self.max_total_charge_usd = get_env("APIFY_MAX_TOTAL_CHARGE_USD", DEFAULT_APIFY_MAX_TOTAL_CHARGE_USD)
@@ -97,16 +100,7 @@ class ApifySoldCompsProvider(CompsProvider):
             "maxItems": str(max_results),
             "maxTotalChargeUsd": self.max_total_charge_usd,
         }
-        payload = {
-            "keywords": [query],
-            "count": max_results,
-            "daysToScrape": self.days_to_scrape,
-            "ebaySite": self.ebay_site,
-            "sortOrder": "endedRecently",
-            "itemCondition": "any",
-            "currencyMode": "USD",
-            "detailedSearch": False,
-        }
+        payload = self._build_actor_input(query=query, max_results=max_results)
 
         try:
             response = httpx.post(url, params=params, json=payload, timeout=self.timeout_seconds)
@@ -132,7 +126,53 @@ class ApifySoldCompsProvider(CompsProvider):
                 },
             )
 
-        return [item for item in data if isinstance(item, dict)]
+        return self._normalize_actor_items(data)
+
+    def _build_actor_input(self, query: str, max_results: int) -> dict[str, Any]:
+        if self.actor_mode == "legacy_ebay_sold_listings":
+            return {
+                "keywords": [query],
+                "count": max_results,
+                "daysToScrape": self.days_to_scrape,
+                "ebaySite": self.ebay_site,
+                "sortOrder": "endedRecently",
+                "itemCondition": "any",
+                "currencyMode": "USD",
+                "detailedSearch": False,
+            }
+
+        if self.actor_mode == "comic_comps_custom":
+            return {
+                "query": query,
+                "maxResults": max_results,
+                "daysToScrape": self.days_to_scrape,
+                "ebaySite": self.ebay_site,
+                "currency": "USD",
+                "sort": "endedRecently",
+            }
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "unsupported_apify_actor_mode",
+                "message": f"Unsupported APIFY_ACTOR_MODE value: {self.actor_mode}",
+            },
+        )
+
+    def _normalize_actor_items(self, data: list[Any]) -> list[dict[str, Any]]:
+        if self.actor_mode == "legacy_ebay_sold_listings":
+            return [item for item in data if isinstance(item, dict)]
+
+        if self.actor_mode == "comic_comps_custom":
+            return _normalize_custom_actor_items(data)
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "unsupported_apify_actor_mode",
+                "message": f"Unsupported APIFY_ACTOR_MODE value: {self.actor_mode}",
+            },
+        )
 
 
 def _item_to_comp(item: dict[str, Any]) -> ComicComp | None:
@@ -409,3 +449,47 @@ def _item_identity(item: dict[str, Any]) -> str:
         or _string_value(item, "title")
         or repr(item)
     )
+
+
+def _normalize_custom_actor_items(data: list[Any]) -> list[dict[str, Any]]:
+    normalized_items: list[dict[str, Any]] = []
+
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+
+        # Allow a custom actor to either return one item per row or a wrapped row with an items array.
+        nested_items = entry.get("items")
+        if isinstance(nested_items, list):
+            normalized_items.extend(_normalize_custom_actor_items(nested_items))
+            continue
+
+        title = _string_value(entry, "title")
+        url = _string_value(entry, "url")
+        ended_at = (
+            _string_value(entry, "endedAt")
+            or _string_value(entry, "saleDate")
+            or _string_value(entry, "date")
+        )
+        sold_price = (
+            _string_value(entry, "soldPrice")
+            or _string_value(entry, "price")
+            or _string_value(entry, "salePrice")
+        )
+        shipping_price = _string_value(entry, "shippingPrice")
+        total_price = _string_value(entry, "totalPrice")
+        item_id = _string_value(entry, "itemId") or _string_value(entry, "id") or url or title
+
+        normalized_items.append(
+            {
+                "itemId": item_id,
+                "title": title,
+                "url": url,
+                "endedAt": ended_at,
+                "soldPrice": sold_price,
+                "shippingPrice": shipping_price,
+                "totalPrice": total_price,
+            }
+        )
+
+    return [item for item in normalized_items if isinstance(item, dict)]

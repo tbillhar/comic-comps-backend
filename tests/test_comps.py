@@ -144,6 +144,54 @@ def test_apify_provider_requires_api_token(monkeypatch) -> None:
     assert response.json()["detail"]["code"] == "sold_comps_provider_not_configured"
 
 
+def test_apify_provider_supports_custom_actor_mode(monkeypatch) -> None:
+    captured_payloads: list[dict[str, object]] = []
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": "xmen-1",
+                    "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
+                    "url": "https://www.ebay.com/itm/xmen-1",
+                    "saleDate": "2026-04-19T12:00:00.000Z",
+                    "price": "6900",
+                }
+            ]
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        captured_payloads.append(kwargs["json"])
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setenv("APIFY_ACTOR_MODE", "comic_comps_custom")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps", json={"query": "X-Men #1 CGC 4.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["usable_count"] == 1
+    assert payload["sales"][0]["title"] == "X-Men #1 (Marvel, 1963) CGC 4.0"
+    assert captured_payloads[0]["query"] == "X-Men #1 CGC 4.0"
+    assert captured_payloads[0]["maxResults"] == 50
+
+
+def test_apify_provider_rejects_unsupported_actor_mode(monkeypatch) -> None:
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setenv("APIFY_ACTOR_MODE", "unknown_mode")
+
+    response = client.post("/comps", json={"query": "X-Men #1 CGC 4.0", "cert_type": "cgc"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "unsupported_apify_actor_mode"
+
+
 def test_apify_provider_normalizes_sold_sales(monkeypatch) -> None:
     class FakeResponse:
         def raise_for_status(self) -> None:

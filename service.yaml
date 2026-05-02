@@ -18,6 +18,8 @@ spec:
               value: apify
             - name: APIFY_ACTOR_ID
               value: caffein.dev~ebay-sold-listings
+            - name: APIFY_ACTOR_MODE
+              value: legacy_ebay_sold_listings
             - name: APIFY_EBAY_SITE
               value: ebay.com
             - name: APIFY_DAYS_TO_SCRAPE

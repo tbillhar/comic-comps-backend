@@ -129,12 +129,28 @@ Optional provider settings:
 
 ```powershell
 $env:APIFY_ACTOR_ID = "caffein.dev~ebay-sold-listings"
+$env:APIFY_ACTOR_MODE = "legacy_ebay_sold_listings"
 $env:APIFY_EBAY_SITE = "ebay.com"
 $env:APIFY_DAYS_TO_SCRAPE = "90"
 $env:APIFY_MAX_TOTAL_CHARGE_USD = "1"
 ```
 
 The provider returns sold listings and the service keeps the `POST /comps` response contract stable.
+
+Supported `APIFY_ACTOR_MODE` values:
+
+- `legacy_ebay_sold_listings`: current Apify eBay sold-listings actor contract.
+- `comic_comps_custom`: custom actor contract for direct eBay sold/completed scraping.
+
+The custom actor mode is expected to return item rows that include:
+
+- `title`
+- `url`
+- one of `endedAt`, `saleDate`, or `date`
+- one of `soldPrice`, `price`, or `salePrice`
+
+It may also return `itemId`, `shippingPrice`, `totalPrice`, or a wrapped row with an `items` array.
+The backend normalizes that output back into the same `/comps` and `/comps/debug` response contract.
 
 ## Tests
 
