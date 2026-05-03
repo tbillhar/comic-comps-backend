@@ -48,9 +48,15 @@ const crawler = new PlaywrightCrawler({
         useFingerprints: true,
     },
     launchContext: {
-        locale: "en-US",
-        timezoneId: "America/New_York",
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        contextOptions: {
+            locale: "en-US",
+            timezoneId: "America/New_York",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            viewport: {
+                width: 1440,
+                height: 2200,
+            },
+        },
     },
     preNavigationHooks: [
         async ({ page, request, session }, gotoOptions) => {
@@ -63,8 +69,6 @@ const crawler = new PlaywrightCrawler({
                 pragma: "no-cache",
                 referer: "https://www.ebay.com/",
             });
-
-            await page.setViewportSize({ width: 1440, height: 2200 });
 
             if (session) {
                 request.headers = {
