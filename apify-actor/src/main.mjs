@@ -26,15 +26,18 @@ const crawler = new PlaywrightCrawler({
     requestHandlerTimeoutSecs: 120,
     async requestHandler({ page, request, enqueueLinks, log: requestLog }) {
         await page.waitForLoadState("domcontentloaded");
+        await page.waitForTimeout(2000);
 
         const extractedRows = await page.evaluate(() => {
             const cards = Array.from(document.querySelectorAll(".srp-results .s-item"));
 
             return cards.map((card) => {
+                const cardText = normalizeWhitespace(card.textContent ?? "");
                 const title = normalizeWhitespace(
                     textFrom(card, [
                         ".s-item__title",
                         "[data-testid='x-refine__rightPanel--srp-results'] .s-item__title",
+                        "[role='heading']",
                     ]),
                 );
 
@@ -54,7 +57,9 @@ const crawler = new PlaywrightCrawler({
                     .filter(Boolean);
 
                 const dateCandidates = Array.from(
-                    card.querySelectorAll(".s-item__caption--signal, .s-item__title--tagblock, .POSITIVE"),
+                    card.querySelectorAll(
+                        ".s-item__caption--signal, .s-item__title--tagblock, .POSITIVE, .s-item__dynamic",
+                    ),
                 )
                     .map((node) => normalizeWhitespace(node.textContent ?? ""))
                     .filter(Boolean);
@@ -64,7 +69,8 @@ const crawler = new PlaywrightCrawler({
                     url,
                     rawPriceText: chooseDisplayedPrice(priceCandidates),
                     rawShippingText: shippingCandidates[0] ?? null,
-                    rawDateText: chooseSoldDate(dateCandidates),
+                    rawDateText: chooseSoldDate(dateCandidates, cardText),
+                    rawCardText: cardText,
                 };
             });
 
@@ -97,12 +103,38 @@ const crawler = new PlaywrightCrawler({
                 return filtered[0] ?? null;
             }
 
-            function chooseSoldDate(candidates) {
+            function chooseSoldDate(candidates, cardText) {
                 for (const candidate of candidates) {
-                    if (/sold\s+[a-z]{3}\s+\d{1,2},\s+\d{4}/i.test(candidate)) {
+                    if (containsSaleDate(candidate)) {
                         return candidate;
                     }
                 }
+
+                if (containsSaleDate(cardText)) {
+                    return extractSaleDateSegment(cardText);
+                }
+
+                return null;
+            }
+
+            function containsSaleDate(text) {
+                return (
+                    /sold\s+[a-z]{3}\s+\d{1,2},\s+\d{4}/i.test(text) ||
+                    /\b[a-z]{3}\s+\d{1,2},\s+\d{4}\b/i.test(text)
+                );
+            }
+
+            function extractSaleDateSegment(text) {
+                const soldMatch = text.match(/sold\s+([a-z]{3}\s+\d{1,2},\s+\d{4})/i);
+                if (soldMatch) {
+                    return `Sold ${soldMatch[1]}`;
+                }
+
+                const plainMatch = text.match(/\b([a-z]{3}\s+\d{1,2},\s+\d{4})\b/i);
+                if (plainMatch) {
+                    return plainMatch[1];
+                }
+
                 return null;
             }
 
@@ -111,6 +143,8 @@ const crawler = new PlaywrightCrawler({
                 return match ? match[1] : null;
             }
         });
+
+        requestLog.info(`Extracted ${extractedRows.length} candidate cards from ${request.url}`);
 
         for (const row of extractedRows) {
             if (state.pushed >= maxResults) {
@@ -175,6 +209,7 @@ function normalizeRow(row, currency) {
     const rawPriceText = cleanString(row.rawPriceText);
     const rawShippingText = cleanString(row.rawShippingText);
     const rawDateText = cleanString(row.rawDateText);
+    const rawCardText = cleanString(row.rawCardText);
 
     if (!title || !url || !rawPriceText || !rawDateText) {
         return null;
@@ -203,6 +238,7 @@ function normalizeRow(row, currency) {
         rawPriceText,
         rawShippingText,
         rawDateText,
+        rawCardText,
     };
 }
 
@@ -230,11 +266,18 @@ function extractAmount(text) {
 
 function parseSoldDate(text) {
     const match = text.match(/sold\s+([a-z]{3}\s+\d{1,2},\s+\d{4})/i);
-    if (!match) {
+    let dateText = match ? match[1] : null;
+
+    if (!dateText) {
+        const plainMatch = text.match(/\b([a-z]{3}\s+\d{1,2},\s+\d{4})\b/i);
+        dateText = plainMatch ? plainMatch[1] : null;
+    }
+
+    if (!dateText) {
         return null;
     }
 
-    const parsedDate = new Date(`${match[1]} 00:00:00 UTC`);
+    const parsedDate = new Date(`${dateText} 00:00:00 UTC`);
     if (Number.isNaN(parsedDate.getTime())) {
         return null;
     }
