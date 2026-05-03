@@ -48,6 +48,13 @@
       "editor": "checkbox",
       "default": true
     },
+    "useResidentialProxy": {
+      "title": "Use Residential Proxy",
+      "type": "boolean",
+      "description": "Prefer Apify residential proxies when Apify Proxy is enabled.",
+      "editor": "checkbox",
+      "default": true
+    },
     "sort": {
       "title": "Sort",
       "type": "string",

@@ -43,6 +43,7 @@ Example actor input:
   "ebaySite": "ebay.com",
   "currency": "USD",
   "useApifyProxy": true,
+  "useResidentialProxy": true,
   "sort": "endedRecently"
 }
 ```
@@ -87,6 +88,7 @@ APIFY_ACTOR_ID=<your-username~your-actor-name>
 ## Operational Notes
 
 - Keep `useApifyProxy` enabled. eBay is much more likely to challenge or thin out result pages without a proxy.
+- Keep `useResidentialProxy` enabled unless you have a better proxy strategy. Recent eBay runs are returning HTTP 403 on generic transport.
 - If a run produces zero dataset rows, inspect the actor logs first. The actor now logs:
   - page title
   - current URL

@@ -10,6 +10,7 @@ const maxResults = clampInteger(input.maxResults, 50, 1, 200);
 const ebaySite = String(input.ebaySite ?? "ebay.com").trim() || "ebay.com";
 const currency = String(input.currency ?? "USD").trim() || "USD";
 const useApifyProxy = input.useApifyProxy !== false;
+const useResidentialProxy = input.useResidentialProxy !== false;
 const sort = String(input.sort ?? "endedRecently").trim() || "endedRecently";
 
 if (!query) {
@@ -22,20 +23,63 @@ const state = {
 };
 
 const proxyConfiguration = useApifyProxy
-    ? await Actor.createProxyConfiguration({ useApifyProxy: true })
+    ? await Actor.createProxyConfiguration(
+        useResidentialProxy
+            ? { groups: ["RESIDENTIAL"] }
+            : { useApifyProxy: true },
+    )
     : undefined;
 
 const crawler = new PlaywrightCrawler({
     maxRequestsPerCrawl: 25,
     headless: true,
     requestHandlerTimeoutSecs: 120,
+    maxRequestRetries: 5,
     proxyConfiguration,
+    useSessionPool: true,
+    persistCookiesPerSession: true,
+    sessionPoolOptions: {
+        maxPoolSize: 20,
+        sessionOptions: {
+            maxUsageCount: 10,
+        },
+    },
+    browserPoolOptions: {
+        useFingerprints: true,
+    },
+    launchContext: {
+        locale: "en-US",
+        timezoneId: "America/New_York",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    },
+    preNavigationHooks: [
+        async ({ page, request, session }, gotoOptions) => {
+            gotoOptions.waitUntil = "domcontentloaded";
+            gotoOptions.timeout = 90000;
+
+            await page.setExtraHTTPHeaders({
+                "accept-language": "en-US,en;q=0.9",
+                "cache-control": "no-cache",
+                pragma: "no-cache",
+                referer: "https://www.ebay.com/",
+            });
+
+            await page.setViewportSize({ width: 1440, height: 2200 });
+
+            if (session) {
+                request.headers = {
+                    ...request.headers,
+                    "accept-language": "en-US,en;q=0.9",
+                };
+            }
+        },
+    ],
     async requestHandler({ page, request, enqueueLinks, log: requestLog }) {
         await page.waitForLoadState("domcontentloaded");
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3500);
         await handleConsent(page);
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(2500);
 
         const pageDiagnostics = await page.evaluate(() => {
             const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
