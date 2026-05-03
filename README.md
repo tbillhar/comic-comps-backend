@@ -226,6 +226,16 @@ IMAGE_TAG="$(git rev-parse --short HEAD)"
 gcloud builds submit --config cloudbuild.yaml --substitutions=_SERVICE_NAME=comic-comps-backend,_REGION=us-central1,_IMAGE_TAG="$IMAGE_TAG"
 ```
 
+To switch Cloud Run to the custom Apify actor:
+
+```bash
+IMAGE_TAG="$(git rev-parse --short HEAD)"
+CUSTOM_ACTOR_ID="tbillhar~comic-comps-ebay-sold-actor"
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions=_SERVICE_NAME=comic-comps-backend,_REGION=us-central1,_IMAGE_TAG="$IMAGE_TAG",_APIFY_ACTOR_ID="$CUSTOM_ACTOR_ID",_APIFY_ACTOR_MODE="comic_comps_custom"
+```
+
 Verify a deployed backend:
 
 ```bash
