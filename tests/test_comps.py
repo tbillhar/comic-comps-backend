@@ -181,6 +181,101 @@ def test_apify_provider_supports_custom_actor_mode(monkeypatch) -> None:
     assert captured_payloads[0]["maxResults"] == 50
 
 
+def test_apify_provider_falls_back_to_legacy_actor_when_custom_actor_errors(monkeypatch) -> None:
+    captured_payloads: list[dict[str, object]] = []
+
+    class FakeResponse:
+        def __init__(self, payload: list[dict[str, object]], should_raise: bool = False) -> None:
+            self.payload = payload
+            self.should_raise = should_raise
+
+        def raise_for_status(self) -> None:
+            if self.should_raise:
+                raise RuntimeError("custom actor blocked")
+            return None
+
+        def json(self) -> list[dict[str, object]]:
+            return self.payload
+
+    def fake_post(*args, **kwargs):
+        payload = kwargs["json"]
+        captured_payloads.append(payload)
+
+        if "query" in payload:
+            return FakeResponse([], should_raise=True)
+
+        return FakeResponse(
+            [
+                {
+                    "itemId": "xmen-1",
+                    "url": "https://www.ebay.com/itm/xmen-1",
+                    "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
+                    "endedAt": "2026-04-19T12:00:00.000Z",
+                    "soldPrice": "6900",
+                }
+            ]
+        )
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setenv("APIFY_ACTOR_MODE", "comic_comps_custom")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps", json={"query": "X-Men #1 CGC 4.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["usable_count"] == 1
+    assert captured_payloads[0]["query"] == "X-Men #1 CGC 4.0"
+    assert captured_payloads[1]["keywords"] == ["X-Men #1 CGC 4.0"]
+
+
+def test_apify_provider_falls_back_to_legacy_actor_when_custom_actor_returns_no_rows(monkeypatch) -> None:
+    captured_payloads: list[dict[str, object]] = []
+
+    class FakeResponse:
+        def __init__(self, payload: list[dict[str, object]]) -> None:
+            self.payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list[dict[str, object]]:
+            return self.payload
+
+    def fake_post(*args, **kwargs):
+        payload = kwargs["json"]
+        captured_payloads.append(payload)
+
+        if "query" in payload:
+            return FakeResponse([])
+
+        return FakeResponse(
+            [
+                {
+                    "itemId": "xmen-1",
+                    "url": "https://www.ebay.com/itm/xmen-1",
+                    "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
+                    "endedAt": "2026-04-19T12:00:00.000Z",
+                    "soldPrice": "6900",
+                }
+            ]
+        )
+
+    monkeypatch.setenv("COMPS_PROVIDER", "apify")
+    monkeypatch.setenv("APIFY_API_TOKEN", "test-token")
+    monkeypatch.setenv("APIFY_ACTOR_MODE", "comic_comps_custom")
+    monkeypatch.setattr("app.providers.apify_provider.httpx.post", fake_post)
+
+    response = client.post("/comps/debug", json={"query": "X-Men #1 CGC 4.0", "cert_type": "cgc"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted_count"] == 1
+    assert captured_payloads[0]["query"] == "X-Men #1 CGC 4.0"
+    assert captured_payloads[1]["keywords"] == ["X-Men #1 CGC 4.0"]
+
+
 def test_apify_provider_rejects_unsupported_actor_mode(monkeypatch) -> None:
     monkeypatch.setenv("COMPS_PROVIDER", "apify")
     monkeypatch.setenv("APIFY_API_TOKEN", "test-token")

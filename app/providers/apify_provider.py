@@ -29,6 +29,7 @@ class ApifySoldCompsProvider(CompsProvider):
         self.api_token = get_required_env("APIFY_API_TOKEN")
         self.actor_id = get_env("APIFY_ACTOR_ID", DEFAULT_APIFY_ACTOR_ID)
         self.actor_mode = get_env("APIFY_ACTOR_MODE", DEFAULT_APIFY_ACTOR_MODE).casefold()
+        self.active_actor_mode = self.actor_mode
         self.ebay_site = get_env("APIFY_EBAY_SITE", DEFAULT_APIFY_EBAY_SITE)
         self.days_to_scrape = get_int_env("APIFY_DAYS_TO_SCRAPE", DEFAULT_APIFY_DAYS_TO_SCRAPE)
         self.max_total_charge_usd = get_env("APIFY_MAX_TOTAL_CHARGE_USD", DEFAULT_APIFY_MAX_TOTAL_CHARGE_USD)
@@ -89,6 +90,24 @@ class ApifySoldCompsProvider(CompsProvider):
         }
 
     def _fetch_items(self, query: str, max_results: int) -> list[dict[str, Any]]:
+        if self.active_actor_mode == "comic_comps_custom":
+            try:
+                items = self._fetch_items_for_mode(query=query, max_results=max_results, actor_mode=self.active_actor_mode)
+            except HTTPException as exc:
+                if exc.status_code != 502:
+                    raise
+                self.active_actor_mode = DEFAULT_APIFY_ACTOR_MODE
+                return self._fetch_items_for_mode(query=query, max_results=max_results, actor_mode=self.active_actor_mode)
+
+            if items:
+                return items
+
+            self.active_actor_mode = DEFAULT_APIFY_ACTOR_MODE
+            return self._fetch_items_for_mode(query=query, max_results=max_results, actor_mode=self.active_actor_mode)
+
+        return self._fetch_items_for_mode(query=query, max_results=max_results, actor_mode=self.active_actor_mode)
+
+    def _fetch_items_for_mode(self, query: str, max_results: int, actor_mode: str) -> list[dict[str, Any]]:
         url = (
             "https://api.apify.com/v2/acts/"
             f"{quote(self.actor_id, safe='~')}/run-sync-get-dataset-items"
@@ -100,7 +119,7 @@ class ApifySoldCompsProvider(CompsProvider):
             "maxItems": str(max_results),
             "maxTotalChargeUsd": self.max_total_charge_usd,
         }
-        payload = self._build_actor_input(query=query, max_results=max_results)
+        payload = self._build_actor_input(query=query, max_results=max_results, actor_mode=actor_mode)
 
         try:
             response = httpx.post(url, params=params, json=payload, timeout=self.timeout_seconds)
@@ -126,10 +145,10 @@ class ApifySoldCompsProvider(CompsProvider):
                 },
             )
 
-        return self._normalize_actor_items(data)
+        return self._normalize_actor_items(data, actor_mode=actor_mode)
 
-    def _build_actor_input(self, query: str, max_results: int) -> dict[str, Any]:
-        if self.actor_mode == "legacy_ebay_sold_listings":
+    def _build_actor_input(self, query: str, max_results: int, actor_mode: str) -> dict[str, Any]:
+        if actor_mode == "legacy_ebay_sold_listings":
             return {
                 "keywords": [query],
                 "count": max_results,
@@ -141,7 +160,7 @@ class ApifySoldCompsProvider(CompsProvider):
                 "detailedSearch": False,
             }
 
-        if self.actor_mode == "comic_comps_custom":
+        if actor_mode == "comic_comps_custom":
             return {
                 "query": query,
                 "maxResults": max_results,
@@ -155,22 +174,22 @@ class ApifySoldCompsProvider(CompsProvider):
             status_code=500,
             detail={
                 "code": "unsupported_apify_actor_mode",
-                "message": f"Unsupported APIFY_ACTOR_MODE value: {self.actor_mode}",
+                "message": f"Unsupported APIFY_ACTOR_MODE value: {actor_mode}",
             },
         )
 
-    def _normalize_actor_items(self, data: list[Any]) -> list[dict[str, Any]]:
-        if self.actor_mode == "legacy_ebay_sold_listings":
+    def _normalize_actor_items(self, data: list[Any], actor_mode: str) -> list[dict[str, Any]]:
+        if actor_mode == "legacy_ebay_sold_listings":
             return [item for item in data if isinstance(item, dict)]
 
-        if self.actor_mode == "comic_comps_custom":
+        if actor_mode == "comic_comps_custom":
             return _normalize_custom_actor_items(data)
 
         raise HTTPException(
             status_code=500,
             detail={
                 "code": "unsupported_apify_actor_mode",
-                "message": f"Unsupported APIFY_ACTOR_MODE value: {self.actor_mode}",
+                "message": f"Unsupported APIFY_ACTOR_MODE value: {actor_mode}",
             },
         )
 
