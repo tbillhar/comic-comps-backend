@@ -125,8 +125,6 @@ class ApifySoldCompsProvider(CompsProvider):
             response = httpx.post(url, params=params, json=payload, timeout=self.timeout_seconds)
             response.raise_for_status()
             data = response.json()
-        except RuntimeError as exc:
-            raise exc
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
