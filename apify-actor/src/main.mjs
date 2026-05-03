@@ -34,26 +34,52 @@ const crawler = new PlaywrightCrawler({
         await page.waitForLoadState("domcontentloaded");
         await page.waitForTimeout(2000);
         await handleConsent(page);
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(1500);
 
         const pageDiagnostics = await page.evaluate(() => {
             const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
-            const cards = Array.from(
-                document.querySelectorAll(".srp-results .s-item, .srp-river-results .s-item, li.s-item"),
-            );
+            const cards = collectResultCards();
             const bodyText = normalizeWhitespace(document.body?.innerText ?? "");
+            const sampleLinkTexts = Array.from(document.querySelectorAll("a[href*='/itm/']"))
+                .slice(0, 5)
+                .map((node) => normalizeWhitespace(node.textContent ?? ""))
+                .filter(Boolean);
+            const sampleCardHtml = cards[0]?.outerHTML?.slice(0, 1000) ?? null;
 
             return {
                 title: document.title,
                 href: location.href,
                 cardCount: cards.length,
                 bodySnippet: bodyText.slice(0, 500),
+                sampleLinkTexts,
+                sampleCardHtml,
             };
+
+            function collectResultCards() {
+                const directCards = Array.from(
+                    document.querySelectorAll(
+                        ".srp-results .s-item, .srp-river-results .s-item, li.s-item, li.srp-results__item, .srp-river-results > li",
+                    ),
+                );
+                if (directCards.length > 0) {
+                    return uniqueElements(directCards);
+                }
+
+                const linkCards = Array.from(document.querySelectorAll("a[href*='/itm/']"))
+                    .map((link) => link.closest("li, article, div"))
+                    .filter(Boolean);
+
+                return uniqueElements(linkCards);
+            }
+
+            function uniqueElements(elements) {
+                return Array.from(new Set(elements));
+            }
         });
 
         const extractedRows = await page.evaluate(() => {
-            const cards = Array.from(
-                document.querySelectorAll(".srp-results .s-item, .srp-river-results .s-item, li.s-item"),
-            );
+            const cards = collectResultCards();
 
             return cards.map((card) => {
                 const cardText = normalizeWhitespace(card.textContent ?? "");
@@ -98,6 +124,23 @@ const crawler = new PlaywrightCrawler({
                 };
             });
 
+            function collectResultCards() {
+                const directCards = Array.from(
+                    document.querySelectorAll(
+                        ".srp-results .s-item, .srp-river-results .s-item, li.s-item, li.srp-results__item, .srp-river-results > li",
+                    ),
+                );
+                if (directCards.length > 0) {
+                    return uniqueElements(directCards);
+                }
+
+                const linkCards = Array.from(document.querySelectorAll("a[href*='/itm/']"))
+                    .map((link) => link.closest("li, article, div"))
+                    .filter(Boolean);
+
+                return uniqueElements(linkCards);
+            }
+
             function textFrom(root, selectors) {
                 for (const selector of selectors) {
                     const value = root.querySelector(selector)?.textContent?.trim();
@@ -110,6 +153,10 @@ const crawler = new PlaywrightCrawler({
 
             function normalizeWhitespace(value) {
                 return value.replace(/\s+/g, " ").trim();
+            }
+
+            function uniqueElements(elements) {
+                return Array.from(new Set(elements));
             }
 
             function chooseDisplayedPrice(candidates) {
