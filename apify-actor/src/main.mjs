@@ -9,6 +9,7 @@ const query = String(input.query ?? "").trim();
 const maxResults = clampInteger(input.maxResults, 50, 1, 200);
 const ebaySite = String(input.ebaySite ?? "ebay.com").trim() || "ebay.com";
 const currency = String(input.currency ?? "USD").trim() || "USD";
+const useApifyProxy = input.useApifyProxy !== false;
 const sort = String(input.sort ?? "endedRecently").trim() || "endedRecently";
 
 if (!query) {
@@ -20,16 +21,39 @@ const state = {
     seenUrls: new Set(),
 };
 
+const proxyConfiguration = useApifyProxy
+    ? await Actor.createProxyConfiguration({ useApifyProxy: true })
+    : undefined;
+
 const crawler = new PlaywrightCrawler({
     maxRequestsPerCrawl: 25,
     headless: true,
     requestHandlerTimeoutSecs: 120,
+    proxyConfiguration,
     async requestHandler({ page, request, enqueueLinks, log: requestLog }) {
         await page.waitForLoadState("domcontentloaded");
         await page.waitForTimeout(2000);
+        await handleConsent(page);
+
+        const pageDiagnostics = await page.evaluate(() => {
+            const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+            const cards = Array.from(
+                document.querySelectorAll(".srp-results .s-item, .srp-river-results .s-item, li.s-item"),
+            );
+            const bodyText = normalizeWhitespace(document.body?.innerText ?? "");
+
+            return {
+                title: document.title,
+                href: location.href,
+                cardCount: cards.length,
+                bodySnippet: bodyText.slice(0, 500),
+            };
+        });
 
         const extractedRows = await page.evaluate(() => {
-            const cards = Array.from(document.querySelectorAll(".srp-results .s-item"));
+            const cards = Array.from(
+                document.querySelectorAll(".srp-results .s-item, .srp-river-results .s-item, li.s-item"),
+            );
 
             return cards.map((card) => {
                 const cardText = normalizeWhitespace(card.textContent ?? "");
@@ -144,7 +168,11 @@ const crawler = new PlaywrightCrawler({
             }
         });
 
-        requestLog.info(`Extracted ${extractedRows.length} candidate cards from ${request.url}`);
+        requestLog.info(`Extracted ${extractedRows.length} candidate cards from ${request.url}`, pageDiagnostics);
+
+        if (pageDiagnostics.cardCount === 0) {
+            requestLog.warning("No eBay result cards detected on page.", pageDiagnostics);
+        }
 
         for (const row of extractedRows) {
             if (state.pushed >= maxResults) {
@@ -187,6 +215,30 @@ log.info(`Starting eBay sold/completed scrape for query '${query}'`, { startUrl,
 await crawler.run([{ url: startUrl, uniqueKey: startUrl }]);
 
 await Actor.exit();
+
+async function handleConsent(page) {
+    const consentSelectors = [
+        "button#gdpr-banner-accept",
+        "button[data-testid='gdpr-banner-accept']",
+        "button[aria-label='Accept']",
+        "button:has-text('Accept all')",
+        "button:has-text('Accept')",
+        "input[type='submit'][value='Accept']",
+    ];
+
+    for (const selector of consentSelectors) {
+        try {
+            const locator = page.locator(selector).first();
+            if (await locator.isVisible({ timeout: 1000 })) {
+                await locator.click({ timeout: 2000 });
+                await page.waitForTimeout(1000);
+                return;
+            }
+        } catch {
+            // Ignore selector-specific failures and continue probing.
+        }
+    }
+}
 
 function buildSoldSearchUrl({ query, ebaySite, sort }) {
     const url = new URL(`https://www.${ebaySite}/sch/i.html`);

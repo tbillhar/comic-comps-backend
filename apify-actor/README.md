@@ -42,6 +42,7 @@ Example actor input:
   "daysToScrape": 90,
   "ebaySite": "ebay.com",
   "currency": "USD",
+  "useApifyProxy": true,
   "sort": "endedRecently"
 }
 ```
@@ -82,3 +83,12 @@ After the actor is created in Apify, note the actor ID and switch the backend to
 APIFY_ACTOR_MODE=comic_comps_custom
 APIFY_ACTOR_ID=<your-username~your-actor-name>
 ```
+
+## Operational Notes
+
+- Keep `useApifyProxy` enabled. eBay is much more likely to challenge or thin out result pages without a proxy.
+- If a run produces zero dataset rows, inspect the actor logs first. The actor now logs:
+  - page title
+  - current URL
+  - number of detected `.s-item` cards
+  - a short body-text snippet when no cards are found

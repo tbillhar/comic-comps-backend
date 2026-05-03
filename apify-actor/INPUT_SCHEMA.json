@@ -41,6 +41,13 @@
       "editor": "textfield",
       "default": "USD"
     },
+    "useApifyProxy": {
+      "title": "Use Apify Proxy",
+      "type": "boolean",
+      "description": "Use Apify Proxy for the actor run. Recommended for eBay.",
+      "editor": "checkbox",
+      "default": true
+    },
     "sort": {
       "title": "Sort",
       "type": "string",
