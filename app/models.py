@@ -66,6 +66,56 @@ class ComicCompSearchResponse(BaseModel):
     sales: list[CompSale]
 
 
+class ComicSeriesRangeQuery(BaseModel):
+    series: str = Field(..., min_length=1, max_length=120, description="Series name, for example X-Men.")
+    issue_start: int = Field(..., ge=1, le=99999, description="Starting issue number, inclusive.")
+    issue_end: int = Field(..., ge=1, le=99999, description="Ending issue number, inclusive.")
+    cert_type: CertType = Field(..., description="Certification mode selected by the user.")
+    max_results_per_group: int = Field(
+        default=20,
+        ge=1,
+        le=50,
+        description="Maximum number of comparable sales to keep for each issue/condition group.",
+    )
+
+    @field_validator("series")
+    @classmethod
+    def strip_series(cls, value: str) -> str:
+        stripped_value = value.strip()
+        if not stripped_value:
+            raise ValueError("Field cannot be blank.")
+        return stripped_value
+
+    @field_validator("issue_end")
+    @classmethod
+    def validate_issue_range(cls, value: int, info) -> int:
+        issue_start = info.data.get("issue_start")
+        if issue_start is not None and value < issue_start:
+            raise ValueError("issue_end must be greater than or equal to issue_start.")
+        return value
+
+
+class IssueConditionCompGroup(BaseModel):
+    issue_number: str
+    condition: str
+    median: float | None
+    low: float | None
+    high: float | None
+    usable_count: int
+    sales: list[CompSale]
+
+
+class ComicSeriesRangeResponse(BaseModel):
+    series: str
+    issue_start: int
+    issue_end: int
+    cert_type: CertType
+    broad_query: str
+    raw_item_count: int
+    group_count: int
+    groups: list[IssueConditionCompGroup]
+
+
 class CompDebugDecision(BaseModel):
     title: str | None
     url: str | None = None

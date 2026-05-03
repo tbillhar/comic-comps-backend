@@ -15,6 +15,7 @@ DEFAULT_APIFY_ACTOR_MODE = "legacy_ebay_sold_listings"
 DEFAULT_APIFY_EBAY_SITE = "ebay.com"
 DEFAULT_APIFY_DAYS_TO_SCRAPE = 90
 DEFAULT_APIFY_MAX_TOTAL_CHARGE_USD = "1"
+DEFAULT_SOLDCOMPS_BASE_URL = "https://sold-comps.com/v1/scrape"
 
 
 def get_cors_origins() -> list[str]:

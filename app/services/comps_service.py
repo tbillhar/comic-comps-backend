@@ -2,7 +2,15 @@ from statistics import median
 
 from fastapi import HTTPException
 
-from app.models import ComicComp, ComicCompQuery, ComicCompSearchDebugResponse, ComicCompSearchResponse, CompSale
+from app.models import (
+    ComicComp,
+    ComicCompQuery,
+    ComicCompSearchDebugResponse,
+    ComicCompSearchResponse,
+    ComicSeriesRangeQuery,
+    ComicSeriesRangeResponse,
+    CompSale,
+)
 from app.providers.base import CompsProvider
 from app.providers.factory import get_comps_provider
 
@@ -58,5 +66,28 @@ def debug_search_comps(
             detail={
                 "code": "debug_not_supported",
                 "message": "Debug search is not implemented for the configured provider.",
+            },
+        ) from exc
+
+
+def search_series_range(
+    query: ComicSeriesRangeQuery,
+    provider: CompsProvider | None = None,
+) -> ComicSeriesRangeResponse:
+    selected_provider = provider or get_comps_provider()
+    try:
+        return selected_provider.search_series_range(
+            series=query.series,
+            issue_start=query.issue_start,
+            issue_end=query.issue_end,
+            cert_type=query.cert_type,
+            max_results_per_group=query.max_results_per_group,
+        )
+    except NotImplementedError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "range_search_not_supported",
+                "message": "Range search is not implemented for the configured provider.",
             },
         ) from exc

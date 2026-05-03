@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from app.models import CertType, ComicComp, ComicCompSearchDebugResponse
+from app.models import CertType, ComicComp, ComicCompSearchDebugResponse, ComicSeriesRangeResponse
 
 
 class CompsProvider(ABC):
@@ -11,6 +11,16 @@ class CompsProvider(ABC):
     @abstractmethod
     def search_comps(self, query: str, cert_type: CertType, max_results: int) -> list[ComicComp]:
         """Return provider-normalized comparable sales matching the user's query."""
+
+    def search_series_range(
+        self,
+        series: str,
+        issue_start: int,
+        issue_end: int,
+        cert_type: CertType,
+        max_results_per_group: int,
+    ) -> ComicSeriesRangeResponse:
+        raise NotImplementedError("Range search is not implemented for this provider.")
 
     def debug_search(self, query: str, cert_type: CertType, max_results: int) -> ComicCompSearchDebugResponse:
         raise NotImplementedError("Debug search is not implemented for this provider.")

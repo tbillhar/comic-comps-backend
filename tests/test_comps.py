@@ -98,6 +98,28 @@ def test_debug_search_comps_returns_sample_diagnostics() -> None:
     assert any(decision["included"] for decision in payload["decisions"])
 
 
+def test_search_series_range_groups_sample_results() -> None:
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "issue_start": 1,
+            "issue_end": 10,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["series"] == "X-Men"
+    assert payload["broad_query"] == "X-Men CGC"
+    assert payload["group_count"] == 1
+    assert payload["groups"][0]["issue_number"] == "1"
+    assert payload["groups"][0]["condition"] == "CGC 4.0"
+    assert payload["groups"][0]["usable_count"] == 3
+
+
 def test_search_comps_filters_by_cert_type() -> None:
     response = client.post("/comps", json={"query": "X-Men 1", "cert_type": "raw"})
 
@@ -132,6 +154,16 @@ def test_sample_comps_provider_can_be_selected(monkeypatch) -> None:
     monkeypatch.setenv("COMPS_PROVIDER", "sample")
 
     assert isinstance(get_comps_provider(), SampleCompsProvider)
+
+
+def test_soldcomps_provider_requires_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.delenv("SOLDCOMPS_API_KEY", raising=False)
+
+    response = client.post("/comps", json={"query": "X-Men 1", "cert_type": "cgc"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "sold_comps_provider_not_configured"
 
 
 def test_apify_provider_requires_api_token(monkeypatch) -> None:
@@ -641,6 +673,72 @@ def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:
 
     assert response.status_code == 500
     assert response.json()["detail"]["code"] == "unsupported_comps_provider"
+
+
+def test_soldcomps_provider_groups_range_results(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "keyword": "X-Men CGC",
+                "totalItems": 3,
+                "hasNextPage": False,
+                "items": [
+                    {
+                        "itemId": "xmen-1-40",
+                        "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
+                        "soldPrice": "6401.69",
+                        "shippingPrice": "14.51",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-1-40",
+                    },
+                    {
+                        "itemId": "xmen-1-55",
+                        "title": "X-Men #1 (Marvel, 1963) CGC 5.5",
+                        "soldPrice": "8200.00",
+                        "shippingPrice": "0.00",
+                        "endedAt": "2026-04-20T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-1-55",
+                    },
+                    {
+                        "itemId": "xmen-2-40",
+                        "title": "X-Men #2 (Marvel, 1963) CGC 4.0",
+                        "soldPrice": "747.95",
+                        "shippingPrice": "0.00",
+                        "endedAt": "2026-04-22T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-2-40",
+                    },
+                ],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        assert kwargs["params"]["keyword"] == "X-Men CGC"
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "issue_start": 1,
+            "issue_end": 2,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 3
+    assert payload["groups"][0]["issue_number"] == "1"
+    assert payload["groups"][0]["condition"] == "CGC 4.0"
+    assert payload["groups"][1]["condition"] == "CGC 5.5"
+    assert payload["groups"][2]["issue_number"] == "2"
 
 
 def test_cors_allows_local_frontend_origin() -> None:

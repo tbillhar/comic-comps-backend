@@ -1,7 +1,17 @@
 from datetime import date
 from decimal import Decimal
 
-from app.models import CertType, ComicComp, ComicCompSearchDebugResponse, CompDebugDecision
+from statistics import median
+
+from app.models import (
+    CertType,
+    ComicComp,
+    ComicCompSearchDebugResponse,
+    ComicSeriesRangeResponse,
+    CompDebugDecision,
+    CompSale,
+    IssueConditionCompGroup,
+)
 from app.providers.base import CompsProvider
 
 
@@ -125,6 +135,68 @@ class SampleCompsProvider(CompsProvider):
             decisions=decisions,
         )
 
+    def search_series_range(
+        self,
+        series: str,
+        issue_start: int,
+        issue_end: int,
+        cert_type: CertType,
+        max_results_per_group: int,
+    ) -> ComicSeriesRangeResponse:
+        broad_query = _range_query(series=series, cert_type=cert_type)
+        filtered_comps = [
+            comp
+            for comp in SAMPLE_COMPS
+            if _cert_type_matches(comp, cert_type)
+            and series.casefold() in comp.title.casefold()
+            and comp.issue_number.isdigit()
+            and issue_start <= int(comp.issue_number) <= issue_end
+        ]
+
+        groups_by_key: dict[tuple[str, str], list[ComicComp]] = {}
+        for comp in filtered_comps:
+            key = (comp.issue_number, comp.grade)
+            groups_by_key.setdefault(key, []).append(comp)
+
+        groups: list[IssueConditionCompGroup] = []
+        for issue_number, condition in sorted(groups_by_key.keys(), key=lambda key: (int(key[0]), key[1])):
+            comps = sorted(groups_by_key[(issue_number, condition)], key=lambda comp: comp.sale_date, reverse=True)[
+                :max_results_per_group
+            ]
+            sales = [
+                CompSale(
+                    title=comp.title,
+                    price=float(comp.sale_price),
+                    date=comp.sale_date,
+                    source=comp.source,
+                    url=comp.url,
+                )
+                for comp in comps
+            ]
+            prices = [sale.price for sale in sales]
+            groups.append(
+                IssueConditionCompGroup(
+                    issue_number=issue_number,
+                    condition=condition,
+                    median=median(prices) if prices else None,
+                    low=min(prices) if prices else None,
+                    high=max(prices) if prices else None,
+                    usable_count=len(sales),
+                    sales=sales,
+                )
+            )
+
+        return ComicSeriesRangeResponse(
+            series=series,
+            issue_start=issue_start,
+            issue_end=issue_end,
+            cert_type=cert_type,
+            broad_query=broad_query,
+            raw_item_count=len(filtered_comps),
+            group_count=len(groups),
+            groups=groups,
+        )
+
 
 def _search_terms(query: str, cert_type: CertType) -> list[str]:
     ignored_terms = {"cgc", "raw"} if cert_type == CertType.CGC else {"raw"}
@@ -140,3 +212,8 @@ def _cert_type_matches(comp: ComicComp, cert_type: CertType) -> bool:
         return comp.grade.casefold().startswith("cgc")
 
     return comp.grade.casefold() == "raw"
+
+
+def _range_query(series: str, cert_type: CertType) -> str:
+    suffix = "CGC" if cert_type == CertType.CGC else "Raw"
+    return f"{series} {suffix}"
