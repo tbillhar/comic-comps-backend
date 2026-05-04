@@ -559,12 +559,10 @@ def _accepted_issue_numbers(
 
 
 def _dedupe_comps(comps: list[ComicComp]) -> list[ComicComp]:
-    seen_titles: set[str] = set()
-    deduped: list[ComicComp] = []
+    deduped_by_key: dict[tuple[str, str], ComicComp] = {}
     for comp in sorted(comps, key=lambda item: item.sale_date, reverse=True):
-        normalized_title = _normalize_text(comp.title)
-        if normalized_title in seen_titles:
-            continue
-        seen_titles.add(normalized_title)
-        deduped.append(comp)
-    return deduped
+        key = (_normalize_text(comp.title), comp.sale_date.isoformat())
+        existing = deduped_by_key.get(key)
+        if existing is None or comp.sale_price < existing.sale_price:
+            deduped_by_key[key] = comp
+    return list(deduped_by_key.values())

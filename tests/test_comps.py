@@ -1198,7 +1198,7 @@ def test_soldcomps_provider_dedupes_same_sale_with_different_item_ids(monkeypatc
     assert payload["groups"][0]["usable_count"] == 1
 
 
-def test_soldcomps_provider_dedupes_same_title_with_different_price_and_date(monkeypatch) -> None:
+def test_soldcomps_provider_dedupes_same_title_and_date_with_different_price(monkeypatch) -> None:
     class FakeResponse:
         def raise_for_status(self) -> None:
             return None
@@ -1211,16 +1211,16 @@ def test_soldcomps_provider_dedupes_same_title_with_different_price_and_date(mon
                 "items": [
                     {
                         "itemId": "xmen-4-a",
-                        "title": "X-Men #4 CGC 9.8 White Pages. 1st Appearance of Omega Red!!",
-                        "soldPrice": "60.00",
-                        "endedAt": "2026-03-22T00:00:00.000Z",
+                        "title": "X-MEN #2 CGC 6.5 CR/OW PAGES // 2ND APPEARANCE OF THE X-MEN MARVEL 1963",
+                        "soldPrice": "1660.00",
+                        "endedAt": "2026-04-18T00:00:00.000Z",
                         "url": "https://ebay.com/itm/xmen-4-a",
                     },
                     {
                         "itemId": "xmen-4-b",
-                        "title": "X-Men #4 CGC 9.8 White Pages. 1st Appearance of Omega Red!!",
-                        "soldPrice": "61.00",
-                        "endedAt": "2026-03-07T00:00:00.000Z",
+                        "title": "X-MEN #2 CGC 6.5 CR/OW PAGES // 2ND APPEARANCE OF THE X-MEN MARVEL 1963",
+                        "soldPrice": "15430.00",
+                        "endedAt": "2026-04-18T00:00:00.000Z",
                         "url": "https://ebay.com/itm/xmen-4-b",
                     },
                 ],
@@ -1234,12 +1234,12 @@ def test_soldcomps_provider_dedupes_same_title_with_different_price_and_date(mon
     monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
 
     response = client.post(
-        "/comps/range/debug",
+        "/comps/range",
         json={
             "series": "X-Men",
             "series_start_year": 1963,
-            "issue_start": 4,
-            "issue_end": 4,
+            "issue_start": 2,
+            "issue_end": 2,
             "cert_type": "cgc",
             "max_results_per_group": 10,
         },
@@ -1247,7 +1247,9 @@ def test_soldcomps_provider_dedupes_same_title_with_different_price_and_date(mon
 
     assert response.status_code == 200
     payload = response.json()
-    assert all(decision["included"] is False for decision in payload["decisions"])
+    assert payload["group_count"] == 1
+    assert payload["groups"][0]["usable_count"] == 1
+    assert payload["groups"][0]["sales"][0]["price"] == 1660.0
 
 
 def test_soldcomps_provider_inferrs_original_series_authority(monkeypatch) -> None:
