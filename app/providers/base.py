@@ -1,6 +1,12 @@
 from abc import ABC, abstractmethod
 
-from app.models import CertType, ComicComp, ComicCompSearchDebugResponse, ComicSeriesRangeResponse
+from app.models import (
+    CertType,
+    ComicComp,
+    ComicCompSearchDebugResponse,
+    ComicSeriesRangeDebugResponse,
+    ComicSeriesRangeResponse,
+)
 
 
 class CompsProvider(ABC):
@@ -25,3 +31,14 @@ class CompsProvider(ABC):
 
     def debug_search(self, query: str, cert_type: CertType, max_results: int) -> ComicCompSearchDebugResponse:
         raise NotImplementedError("Debug search is not implemented for this provider.")
+
+    def debug_series_range(
+        self,
+        series: str,
+        series_start_year: int | None,
+        issue_start: int,
+        issue_end: int,
+        cert_type: CertType,
+        max_results_per_group: int,
+    ) -> ComicSeriesRangeDebugResponse:
+        raise NotImplementedError("Range debug search is not implemented for this provider.")

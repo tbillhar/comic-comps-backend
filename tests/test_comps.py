@@ -882,6 +882,72 @@ def test_soldcomps_provider_inferrs_original_series_authority(monkeypatch) -> No
     assert payload["group_count"] == 1
 
 
+def test_soldcomps_range_debug_returns_rejection_reasons(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "keyword": "X-Men 1963 CGC",
+                "totalItems": 3,
+                "hasNextPage": False,
+                "items": [
+                    {
+                        "itemId": "xmen-4-good",
+                        "title": "X-Men #4 (Marvel, 1963) CGC 4.0",
+                        "soldPrice": "1200.00",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-good",
+                    },
+                    {
+                        "itemId": "xmen-4-modern",
+                        "title": "X-Men #4 Special Edition CGC 9.8",
+                        "soldPrice": "99.00",
+                        "endedAt": "2026-04-13T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-modern",
+                    },
+                    {
+                        "itemId": "xmen-12-vintage",
+                        "title": "X-Men #12 (Marvel, 1963) CGC 4.0",
+                        "soldPrice": "1800.00",
+                        "endedAt": "2026-04-14T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-12-vintage",
+                    },
+                ],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range/debug",
+        json={
+            "series": "X-Men",
+            "issue_start": 4,
+            "issue_end": 10,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["series"] == "X-Men"
+    assert payload["series_start_year"] == 1963
+    assert payload["accepted_count"] == 1
+    matched = next(decision for decision in payload["decisions"] if decision["included"])
+    modern = next(decision for decision in payload["decisions"] if decision["title"] == "X-Men #4 Special Edition CGC 9.8")
+    out_of_range = next(decision for decision in payload["decisions"] if decision["title"] == "X-Men #12 (Marvel, 1963) CGC 4.0")
+    assert matched["title"] == "X-Men #4 (Marvel, 1963) CGC 4.0"
+    assert modern["reasons"] == ["variant_or_relaunch_marker", "series_start_year_mismatch:1963"]
+    assert "issue_out_of_range:4-10" in out_of_range["reasons"]
+
+
 def test_cors_allows_local_frontend_origin() -> None:
     response = client.options(
         "/comps",

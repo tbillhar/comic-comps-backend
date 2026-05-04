@@ -13,10 +13,12 @@ from app.models import (
     CertType,
     ComicComp,
     ComicCompSearchDebugResponse,
+    ComicSeriesRangeDebugResponse,
     ComicSeriesRangeResponse,
     CompDebugDecision,
     CompSale,
     IssueConditionCompGroup,
+    RangeDebugDecision,
 )
 from app.providers.base import CompsProvider
 
@@ -164,6 +166,76 @@ class SoldCompsProvider(CompsProvider):
             fetch_limit=max_results,
             raw_item_count=len(items),
             accepted_count=len(accepted_items[:max_results]),
+            decisions=decisions,
+        )
+
+    def debug_series_range(
+        self,
+        series: str,
+        series_start_year: int | None,
+        issue_start: int,
+        issue_end: int,
+        cert_type: CertType,
+        max_results_per_group: int,
+    ) -> ComicSeriesRangeDebugResponse:
+        broad_query = _range_query(series=series, series_start_year=series_start_year, cert_type=cert_type)
+        items = self._fetch_items(keyword=broad_query)
+        series_terms = _series_terms(series)
+        decisions: list[RangeDebugDecision] = []
+        accepted_count = 0
+
+        for item in items:
+            comp = _item_to_comp(item)
+            title = _string_value(item, "title")
+            url = _string_value(item, "url")
+            reasons: list[str] = []
+            parsed_issue = _extract_issue_number(title or "", series_terms) if title else None
+            parsed_condition = _extract_cgc_grade(title or "") if title else None
+
+            if comp is None:
+                reasons.append("invalid_item_shape")
+            else:
+                if not _cert_type_matches(comp.title, cert_type):
+                    reasons.append("cert_type_mismatch")
+                if parsed_issue is None:
+                    reasons.append("issue_not_parsed")
+                if parsed_condition is None and cert_type == CertType.CGC:
+                    reasons.append("condition_not_parsed")
+                if not _has_matching_series_phrase(comp.title, series_terms):
+                    reasons.append("series_phrase_mismatch")
+                if _has_variant_or_relaunch_markers(comp.title):
+                    reasons.append("variant_or_relaunch_marker")
+                if series_start_year is not None and not _matches_series_start_year(comp.title, series_start_year):
+                    reasons.append(f"series_start_year_mismatch:{series_start_year}")
+                if parsed_issue is not None and not issue_start <= int(parsed_issue) <= issue_end:
+                    reasons.append(f"issue_out_of_range:{issue_start}-{issue_end}")
+
+            included = comp is not None and not reasons
+            if included:
+                accepted_count += 1
+
+            decisions.append(
+                RangeDebugDecision(
+                    title=title,
+                    url=url,
+                    included=included,
+                    reasons=reasons or ["matched"],
+                    parsed_issue_number=parsed_issue,
+                    parsed_condition=f"CGC {parsed_condition}" if parsed_condition and cert_type == CertType.CGC else parsed_condition,
+                    parsed_price=float(comp.sale_price) if comp is not None else None,
+                )
+            )
+
+        return ComicSeriesRangeDebugResponse(
+            series=series,
+            series_start_year=series_start_year,
+            issue_start=issue_start,
+            issue_end=issue_end,
+            cert_type=cert_type,
+            provider="soldcomps",
+            broad_query=broad_query,
+            raw_item_count=len(items),
+            accepted_count=accepted_count,
             decisions=decisions,
         )
 

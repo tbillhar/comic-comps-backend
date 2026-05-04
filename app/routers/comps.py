@@ -5,10 +5,12 @@ from app.models import (
     ComicCompQuery,
     ComicCompSearchDebugResponse,
     ComicCompSearchResponse,
+    ComicSeriesRangeDebugResponse,
     ComicSeriesRangeQuery,
     ComicSeriesRangeResponse,
 )
 from app.services.comps_service import (
+    debug_series_range as debug_series_range_service,
     debug_search_comps as debug_search_comps_service,
     list_sample_comps,
     search_series_range as search_series_range_service,
@@ -40,3 +42,8 @@ def debug_search_comps(query: ComicCompQuery) -> ComicCompSearchDebugResponse:
 @router.post("/range", response_model=ComicSeriesRangeResponse)
 def search_series_range(query: ComicSeriesRangeQuery) -> ComicSeriesRangeResponse:
     return search_series_range_service(query)
+
+
+@router.post("/range/debug", response_model=ComicSeriesRangeDebugResponse)
+def debug_series_range(query: ComicSeriesRangeQuery) -> ComicSeriesRangeDebugResponse:
+    return debug_series_range_service(query)

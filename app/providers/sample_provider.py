@@ -7,10 +7,12 @@ from app.models import (
     CertType,
     ComicComp,
     ComicCompSearchDebugResponse,
+    ComicSeriesRangeDebugResponse,
     ComicSeriesRangeResponse,
     CompDebugDecision,
     CompSale,
     IssueConditionCompGroup,
+    RangeDebugDecision,
 )
 from app.providers.base import CompsProvider
 
@@ -197,6 +199,55 @@ class SampleCompsProvider(CompsProvider):
             raw_item_count=len(filtered_comps),
             group_count=len(groups),
             groups=groups,
+        )
+
+    def debug_series_range(
+        self,
+        series: str,
+        series_start_year: int | None,
+        issue_start: int,
+        issue_end: int,
+        cert_type: CertType,
+        max_results_per_group: int,
+    ) -> ComicSeriesRangeDebugResponse:
+        decisions: list[RangeDebugDecision] = []
+        accepted_count = 0
+        for comp in SAMPLE_COMPS:
+            reasons: list[str] = []
+            if not _cert_type_matches(comp, cert_type):
+                reasons.append("cert_type_mismatch")
+            if series.casefold() not in comp.title.casefold():
+                reasons.append("series_phrase_mismatch")
+            if not comp.issue_number.isdigit():
+                reasons.append("issue_not_parsed")
+            elif not issue_start <= int(comp.issue_number) <= issue_end:
+                reasons.append(f"issue_out_of_range:{issue_start}-{issue_end}")
+            included = not reasons
+            if included:
+                accepted_count += 1
+            decisions.append(
+                RangeDebugDecision(
+                    title=comp.title,
+                    url=comp.url,
+                    included=included,
+                    reasons=reasons or ["matched"],
+                    parsed_issue_number=comp.issue_number or None,
+                    parsed_condition=comp.grade or None,
+                    parsed_price=float(comp.sale_price),
+                )
+            )
+
+        return ComicSeriesRangeDebugResponse(
+            series=series,
+            series_start_year=series_start_year,
+            issue_start=issue_start,
+            issue_end=issue_end,
+            cert_type=cert_type,
+            provider="sample",
+            broad_query=_range_query(series=series, cert_type=cert_type, series_start_year=series_start_year),
+            raw_item_count=len(SAMPLE_COMPS),
+            accepted_count=accepted_count,
+            decisions=decisions,
         )
 
 

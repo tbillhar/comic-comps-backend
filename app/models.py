@@ -123,6 +123,29 @@ class ComicSeriesRangeResponse(BaseModel):
     groups: list[IssueConditionCompGroup]
 
 
+class RangeDebugDecision(BaseModel):
+    title: str | None
+    url: str | None = None
+    included: bool
+    reasons: list[str]
+    parsed_issue_number: str | None = None
+    parsed_condition: str | None = None
+    parsed_price: float | None = None
+
+
+class ComicSeriesRangeDebugResponse(BaseModel):
+    series: str
+    series_start_year: int | None = None
+    issue_start: int
+    issue_end: int
+    cert_type: CertType
+    provider: str
+    broad_query: str
+    raw_item_count: int
+    accepted_count: int
+    decisions: list[RangeDebugDecision]
+
+
 class CompDebugDecision(BaseModel):
     title: str | None
     url: str | None = None
