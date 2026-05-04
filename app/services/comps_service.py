@@ -13,6 +13,7 @@ from app.models import (
 )
 from app.providers.base import CompsProvider
 from app.providers.factory import get_comps_provider
+from app.series_authority import resolve_original_series
 
 
 def list_sample_comps(title: str | None = None, issue_number: str | None = None) -> list[ComicComp]:
@@ -75,10 +76,17 @@ def search_series_range(
     provider: CompsProvider | None = None,
 ) -> ComicSeriesRangeResponse:
     selected_provider = provider or get_comps_provider()
+    original_series = resolve_original_series(query.series)
+    resolved_series = original_series.canonical_name if original_series is not None else query.series
+    resolved_series_start_year = (
+        query.series_start_year
+        if query.series_start_year is not None
+        else (original_series.start_year if original_series is not None else None)
+    )
     try:
         return selected_provider.search_series_range(
-            series=query.series,
-            series_start_year=query.series_start_year,
+            series=resolved_series,
+            series_start_year=resolved_series_start_year,
             issue_start=query.issue_start,
             issue_end=query.issue_end,
             cert_type=query.cert_type,

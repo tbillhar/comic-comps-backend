@@ -122,6 +122,25 @@ def test_search_series_range_groups_sample_results() -> None:
     assert payload["groups"][0]["usable_count"] == 3
 
 
+def test_search_series_range_inferrs_original_series_year_from_authority_map() -> None:
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "Amazing Spiderman",
+            "issue_start": 1,
+            "issue_end": 10,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["series"] == "Amazing Spider-Man"
+    assert payload["series_start_year"] == 1963
+    assert payload["broad_query"] == "Amazing Spider-Man 1963 CGC"
+
+
 def test_search_comps_filters_by_cert_type() -> None:
     response = client.post("/comps", json={"query": "X-Men 1", "cert_type": "raw"})
 
@@ -814,6 +833,53 @@ def test_soldcomps_provider_filters_relaunches_when_series_start_year_is_supplie
     assert "X-Men #2 (Marvel, 1963) CGC 4.0" in titles
     assert "X-Men #1 Special Edition, Jim Lee Marvel 10/91 CGC 9.0" not in titles
     assert "Professor Xavier and the X-Men #1 CGC 9.8" not in titles
+
+
+def test_soldcomps_provider_inferrs_original_series_authority(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "keyword": "Amazing Spider-Man 1963 CGC",
+                "totalItems": 1,
+                "hasNextPage": False,
+                "items": [
+                    {
+                        "itemId": "asm-1-1963",
+                        "title": "Amazing Spider-Man #1 (Marvel, 1963) CGC 4.0",
+                        "soldPrice": "4200.00",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/asm-1-1963",
+                    }
+                ],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        assert kwargs["params"]["keyword"] == "Amazing Spider-Man 1963 CGC"
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "Amazing Spiderman",
+            "issue_start": 1,
+            "issue_end": 1,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["series"] == "Amazing Spider-Man"
+    assert payload["series_start_year"] == 1963
+    assert payload["group_count"] == 1
 
 
 def test_cors_allows_local_frontend_origin() -> None:
