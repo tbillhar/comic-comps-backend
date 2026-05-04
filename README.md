@@ -27,6 +27,7 @@ The API will be available at `http://127.0.0.1:8000`.
 - `GET /comps?title=spider&issue_number=300` filters comparable sales by title and issue.
 - `POST /comps` searches comparable sales using a JSON request body.
 - `POST /comps/debug` returns provider retrieval and filtering diagnostics for a query.
+- `POST /comps/range` searches a broad series query once, then groups results by issue number and condition.
 
 Interactive API docs are available at `/docs` when the server is running.
 
@@ -91,6 +92,24 @@ curl -X POST "https://comic-comps-backend-7tckae75qq-uc.a.run.app/comps/debug" \
   -d '{"query":"X-Men #1 CGC 4.0","cert_type":"cgc","max_results":10}'
 ```
 
+### `POST /comps/range`
+
+Use this endpoint with providers that support range search, currently `soldcomps`.
+
+Example:
+
+```bash
+curl -X POST "https://comic-comps-backend-7tckae75qq-uc.a.run.app/comps/range" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "series": "X-Men",
+    "issue_start": 1,
+    "issue_end": 10,
+    "cert_type": "cgc",
+    "max_results_per_group": 20
+  }'
+```
+
 ## CORS
 
 Local frontend origins are allowed by default:
@@ -117,6 +136,7 @@ $env:COMPS_PROVIDER = "apify"
 Current supported values:
 
 - `apify`: real eBay sold listing retrieval through the configured Apify actor.
+- `soldcomps`: SoldComps-backed sold listing retrieval with support for grouped range searches.
 - `sample`: in-memory sample data used for development and contract testing.
 
 The `apify` provider requires:
@@ -133,6 +153,18 @@ $env:APIFY_ACTOR_MODE = "legacy_ebay_sold_listings"
 $env:APIFY_EBAY_SITE = "ebay.com"
 $env:APIFY_DAYS_TO_SCRAPE = "90"
 $env:APIFY_MAX_TOTAL_CHARGE_USD = "1"
+```
+
+The `soldcomps` provider requires:
+
+```powershell
+$env:SOLDCOMPS_API_KEY = "your-key"
+```
+
+Optional SoldComps setting:
+
+```powershell
+$env:SOLDCOMPS_BASE_URL = "https://sold-comps.com/v1/scrape"
 ```
 
 The provider returns sold listings and the service keeps the `POST /comps` response contract stable.
@@ -212,6 +244,21 @@ After the first secret creation, rotate/update it with:
 printf '%s' "$APIFY_API_TOKEN" | gcloud secrets versions add apify-api-token --data-file=-
 ```
 
+Create the SoldComps secret with:
+
+```bash
+printf '%s' "$SOLDCOMPS_API_KEY" | gcloud secrets create soldcomps-api-key --data-file=-
+gcloud secrets add-iam-policy-binding soldcomps-api-key \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+After the first secret creation, rotate/update it with:
+
+```bash
+printf '%s' "$SOLDCOMPS_API_KEY" | gcloud secrets versions add soldcomps-api-key --data-file=-
+```
+
 The default Cloud Build substitutions deploy the service as `comic-comps-backend` in `us-central1`.
 Override them as needed:
 
@@ -234,6 +281,15 @@ CUSTOM_ACTOR_ID="tbillhar~comic-comps-ebay-sold-actor"
 gcloud builds submit \
   --config cloudbuild.yaml \
   --substitutions=_SERVICE_NAME=comic-comps-backend,_REGION=us-central1,_IMAGE_TAG="$IMAGE_TAG",_APIFY_ACTOR_ID="$CUSTOM_ACTOR_ID",_APIFY_ACTOR_MODE="comic_comps_custom"
+```
+
+To switch Cloud Run to SoldComps:
+
+```bash
+IMAGE_TAG="$(git rev-parse --short HEAD)"
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions=_SERVICE_NAME=comic-comps-backend,_REGION=us-central1,_IMAGE_TAG="$IMAGE_TAG",_COMPS_PROVIDER="soldcomps"
 ```
 
 Verify a deployed backend:

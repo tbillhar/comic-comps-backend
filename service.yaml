@@ -31,3 +31,8 @@ spec:
                 secretKeyRef:
                   name: apify-api-token
                   key: latest
+            - name: SOLDCOMPS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: soldcomps-api-key
+                  key: latest
