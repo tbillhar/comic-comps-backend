@@ -79,7 +79,7 @@ class SoldCompsProvider(CompsProvider):
                 continue
             if not _has_matching_series_phrase(comp.title, series_terms):
                 continue
-            if _has_variant_or_relaunch_markers(comp.title):
+            if _has_variant_or_relaunch_markers(comp.title, series_terms):
                 continue
             if series_start_year is not None and not _matches_series_start_year(comp.title, series_start_year):
                 continue
@@ -214,7 +214,7 @@ class SoldCompsProvider(CompsProvider):
                     reasons.append("condition_not_parsed")
                 if not _has_matching_series_phrase(comp.title, series_terms):
                     reasons.append("series_phrase_mismatch")
-                if _has_variant_or_relaunch_markers(comp.title):
+                if _has_variant_or_relaunch_markers(comp.title, series_terms):
                     reasons.append("variant_or_relaunch_marker")
                 if series_start_year is not None and not _matches_series_start_year(comp.title, series_start_year):
                     reasons.append(f"series_start_year_mismatch:{series_start_year}")
@@ -486,7 +486,7 @@ def _matches_series_start_year(title: str, series_start_year: int) -> bool:
     return any(series_start_year <= year <= 1979 for year in years)
 
 
-def _has_variant_or_relaunch_markers(title: str) -> bool:
+def _has_variant_or_relaunch_markers(title: str, series_terms: list[str] | None = None) -> bool:
     normalized_title = _normalize_text(title)
     markers = {
         "special edition",
@@ -499,7 +499,25 @@ def _has_variant_or_relaunch_markers(title: str) -> bool:
         "mini series",
         "mini-series",
     }
-    return any(marker in normalized_title for marker in markers)
+    if any(marker in normalized_title for marker in markers):
+        return True
+
+    if re.search(r"\b\d{1,2}/\d{2}\b", title):
+        return True
+
+    if series_terms == ["x", "men"]:
+        modern_x_men_markers = {
+            "jim lee",
+            "omega red",
+            "maverick",
+            "new slab",
+            "psylocke",
+            "magik",
+        }
+        if any(marker in normalized_title for marker in modern_x_men_markers):
+            return True
+
+    return False
 
 
 def _item_dedupe_key(item: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
@@ -531,7 +549,7 @@ def _accepted_issue_numbers(
             continue
         if not _has_matching_series_phrase(comp.title, series_terms):
             continue
-        if _has_variant_or_relaunch_markers(comp.title):
+        if _has_variant_or_relaunch_markers(comp.title, series_terms):
             continue
         if series_start_year is not None and not _matches_series_start_year(comp.title, series_start_year):
             continue
@@ -541,12 +559,12 @@ def _accepted_issue_numbers(
 
 
 def _dedupe_comps(comps: list[ComicComp]) -> list[ComicComp]:
-    seen_keys: set[tuple[str, str, str]] = set()
+    seen_titles: set[str] = set()
     deduped: list[ComicComp] = []
-    for comp in comps:
-        key = (_normalize_text(comp.title), str(comp.sale_price), comp.sale_date.isoformat())
-        if key in seen_keys:
+    for comp in sorted(comps, key=lambda item: item.sale_date, reverse=True):
+        normalized_title = _normalize_text(comp.title)
+        if normalized_title in seen_titles:
             continue
-        seen_keys.add(key)
+        seen_titles.add(normalized_title)
         deduped.append(comp)
     return deduped
