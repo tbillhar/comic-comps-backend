@@ -697,46 +697,53 @@ def test_unsupported_comps_provider_returns_500(monkeypatch) -> None:
 
 
 def test_soldcomps_provider_groups_range_results(monkeypatch) -> None:
+    requested_keywords: list[str] = []
+
     class FakeResponse:
+        def __init__(self, keyword: str) -> None:
+            self.keyword = keyword
+
         def raise_for_status(self) -> None:
             return None
 
         def json(self) -> dict[str, object]:
-            return {
-                "keyword": "X-Men 1963 CGC",
-                "totalItems": 3,
-                "hasNextPage": False,
-                "items": [
-                    {
-                        "itemId": "xmen-1-40",
-                        "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
-                        "soldPrice": "6401.69",
-                        "shippingPrice": "14.51",
-                        "endedAt": "2026-04-12T00:00:00.000Z",
-                        "url": "https://ebay.com/itm/xmen-1-40",
-                    },
-                    {
-                        "itemId": "xmen-1-55",
-                        "title": "X-Men #1 (Marvel, 1963) CGC 5.5",
-                        "soldPrice": "8200.00",
-                        "shippingPrice": "0.00",
-                        "endedAt": "2026-04-20T00:00:00.000Z",
-                        "url": "https://ebay.com/itm/xmen-1-55",
-                    },
-                    {
-                        "itemId": "xmen-2-40",
-                        "title": "X-Men #2 (Marvel, 1963) CGC 4.0",
-                        "soldPrice": "747.95",
-                        "shippingPrice": "0.00",
-                        "endedAt": "2026-04-22T00:00:00.000Z",
-                        "url": "https://ebay.com/itm/xmen-2-40",
-                    },
-                ],
-            }
+            if self.keyword == "X-Men 1963 CGC":
+                return {
+                    "keyword": self.keyword,
+                    "totalItems": 3,
+                    "hasNextPage": False,
+                    "items": [
+                        {
+                            "itemId": "xmen-1-40",
+                            "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
+                            "soldPrice": "6401.69",
+                            "shippingPrice": "14.51",
+                            "endedAt": "2026-04-12T00:00:00.000Z",
+                            "url": "https://ebay.com/itm/xmen-1-40",
+                        },
+                        {
+                            "itemId": "xmen-1-55",
+                            "title": "X-Men #1 (Marvel, 1963) CGC 5.5",
+                            "soldPrice": "8200.00",
+                            "shippingPrice": "0.00",
+                            "endedAt": "2026-04-20T00:00:00.000Z",
+                            "url": "https://ebay.com/itm/xmen-1-55",
+                        },
+                        {
+                            "itemId": "xmen-2-40",
+                            "title": "X-Men #2 (Marvel, 1963) CGC 4.0",
+                            "soldPrice": "747.95",
+                            "shippingPrice": "0.00",
+                            "endedAt": "2026-04-22T00:00:00.000Z",
+                            "url": "https://ebay.com/itm/xmen-2-40",
+                        },
+                    ],
+                }
+            raise AssertionError(f"Unexpected keyword: {self.keyword}")
 
     def fake_get(*args, **kwargs) -> FakeResponse:
-        assert kwargs["params"]["keyword"] == "X-Men 1963 CGC"
-        return FakeResponse()
+        requested_keywords.append(kwargs["params"]["keyword"])
+        return FakeResponse(kwargs["params"]["keyword"])
 
     monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
     monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
@@ -761,6 +768,84 @@ def test_soldcomps_provider_groups_range_results(monkeypatch) -> None:
     assert payload["groups"][0]["condition"] == "CGC 4.0"
     assert payload["groups"][1]["condition"] == "CGC 5.5"
     assert payload["groups"][2]["issue_number"] == "2"
+    assert requested_keywords == ["X-Men 1963 CGC"]
+
+
+def test_soldcomps_provider_fills_missing_issues_with_targeted_queries(monkeypatch) -> None:
+    requested_keywords: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, keyword: str) -> None:
+            self.keyword = keyword
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            if self.keyword == "X-Men 1963 CGC":
+                return {
+                    "keyword": self.keyword,
+                    "totalItems": 2,
+                    "hasNextPage": False,
+                    "items": [
+                        {
+                            "itemId": "xmen-1-40",
+                            "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
+                            "soldPrice": "6401.69",
+                            "endedAt": "2026-04-12T00:00:00.000Z",
+                            "url": "https://ebay.com/itm/xmen-1-40",
+                        },
+                        {
+                            "itemId": "xmen-2-40",
+                            "title": "X-Men #2 (Marvel, 1963) CGC 4.0",
+                            "soldPrice": "747.95",
+                            "endedAt": "2026-04-22T00:00:00.000Z",
+                            "url": "https://ebay.com/itm/xmen-2-40",
+                        },
+                    ],
+                }
+            if self.keyword == "X-Men #3 1963 CGC":
+                return {
+                    "keyword": self.keyword,
+                    "totalItems": 1,
+                    "hasNextPage": False,
+                    "items": [
+                        {
+                            "itemId": "xmen-3-40",
+                            "title": "X-Men #3 (Marvel, 1963) CGC 4.0",
+                            "soldPrice": "899.99",
+                            "endedAt": "2026-04-20T00:00:00.000Z",
+                            "url": "https://ebay.com/itm/xmen-3-40",
+                        }
+                    ],
+                }
+            raise AssertionError(f"Unexpected keyword: {self.keyword}")
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        requested_keywords.append(kwargs["params"]["keyword"])
+        return FakeResponse(kwargs["params"]["keyword"])
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "series_start_year": 1963,
+            "issue_start": 1,
+            "issue_end": 3,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 3
+    assert [group["issue_number"] for group in payload["groups"]] == ["1", "2", "3"]
+    assert requested_keywords == ["X-Men 1963 CGC", "X-Men #3 1963 CGC"]
 
 
 def test_soldcomps_provider_filters_relaunches_when_series_start_year_is_supplied(monkeypatch) -> None:

@@ -57,7 +57,13 @@ class SoldCompsProvider(CompsProvider):
         max_results_per_group: int,
     ) -> ComicSeriesRangeResponse:
         broad_query = _range_query(series=series, series_start_year=series_start_year, cert_type=cert_type)
-        items = self._fetch_items(keyword=broad_query)
+        items = self._fetch_range_candidate_items(
+            series=series,
+            series_start_year=series_start_year,
+            issue_start=issue_start,
+            issue_end=issue_end,
+            cert_type=cert_type,
+        )
         raw_item_count = len(items)
         series_terms = _series_terms(series)
 
@@ -179,7 +185,13 @@ class SoldCompsProvider(CompsProvider):
         max_results_per_group: int,
     ) -> ComicSeriesRangeDebugResponse:
         broad_query = _range_query(series=series, series_start_year=series_start_year, cert_type=cert_type)
-        items = self._fetch_items(keyword=broad_query)
+        items = self._fetch_range_candidate_items(
+            series=series,
+            series_start_year=series_start_year,
+            issue_start=issue_start,
+            issue_end=issue_end,
+            cert_type=cert_type,
+        )
         series_terms = _series_terms(series)
         decisions: list[RangeDebugDecision] = []
         accepted_count = 0
@@ -238,6 +250,49 @@ class SoldCompsProvider(CompsProvider):
             accepted_count=accepted_count,
             decisions=decisions,
         )
+
+    def _fetch_range_candidate_items(
+        self,
+        series: str,
+        series_start_year: int | None,
+        issue_start: int,
+        issue_end: int,
+        cert_type: CertType,
+    ) -> list[dict[str, Any]]:
+        broad_query = _range_query(series=series, series_start_year=series_start_year, cert_type=cert_type)
+        items = self._fetch_items(keyword=broad_query)
+        seen_keys = {_item_dedupe_key(item) for item in items}
+        series_terms = _series_terms(series)
+        covered_issues = _accepted_issue_numbers(
+            items=items,
+            series_terms=series_terms,
+            issue_start=issue_start,
+            issue_end=issue_end,
+            cert_type=cert_type,
+            series_start_year=series_start_year,
+        )
+
+        missing_issues = [
+            issue_number
+            for issue_number in range(issue_start, issue_end + 1)
+            if str(issue_number) not in covered_issues
+        ]
+
+        for issue_number in missing_issues:
+            issue_query = _issue_query(
+                series=series,
+                issue_number=issue_number,
+                series_start_year=series_start_year,
+                cert_type=cert_type,
+            )
+            for item in self._fetch_items(keyword=issue_query):
+                dedupe_key = _item_dedupe_key(item)
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+                items.append(item)
+
+        return items
 
     def _fetch_items(self, keyword: str) -> list[dict[str, Any]]:
         headers = {
@@ -405,6 +460,13 @@ def _range_query(series: str, series_start_year: int | None, cert_type: CertType
     return f"{series} {suffix}"
 
 
+def _issue_query(series: str, issue_number: int, series_start_year: int | None, cert_type: CertType) -> str:
+    suffix = "CGC" if cert_type == CertType.CGC else "raw"
+    if series_start_year is not None:
+        return f"{series} #{issue_number} {series_start_year} {suffix}"
+    return f"{series} #{issue_number} {suffix}"
+
+
 def _series_terms(series: str) -> list[str]:
     return _normalize_text(series).split()
 
@@ -439,3 +501,42 @@ def _has_variant_or_relaunch_markers(title: str) -> bool:
         "mini-series",
     }
     return any(marker in normalized_title for marker in markers)
+
+
+def _item_dedupe_key(item: dict[str, Any]) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+    return (
+        _string_value(item, "itemId"),
+        _string_value(item, "url"),
+        _string_value(item, "title"),
+        _string_value(item, "endedAt"),
+        _string_value(item, "soldPrice"),
+    )
+
+
+def _accepted_issue_numbers(
+    items: list[dict[str, Any]],
+    series_terms: list[str],
+    issue_start: int,
+    issue_end: int,
+    cert_type: CertType,
+    series_start_year: int | None,
+) -> set[str]:
+    covered_issues: set[str] = set()
+    for item in items:
+        comp = _item_to_comp(item)
+        if comp is None or not _cert_type_matches(comp.title, cert_type):
+            continue
+
+        parsed_issue = _extract_issue_number(comp.title, series_terms)
+        parsed_condition = _extract_cgc_grade(comp.title) if cert_type == CertType.CGC else "Raw"
+        if parsed_issue is None or parsed_condition is None:
+            continue
+        if not _has_matching_series_phrase(comp.title, series_terms):
+            continue
+        if _has_variant_or_relaunch_markers(comp.title):
+            continue
+        if series_start_year is not None and not _matches_series_start_year(comp.title, series_start_year):
+            continue
+        if issue_start <= int(parsed_issue) <= issue_end:
+            covered_issues.add(parsed_issue)
+    return covered_issues
