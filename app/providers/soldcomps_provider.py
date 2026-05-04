@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import logging
 import re
 from statistics import median
 from typing import Any
@@ -7,7 +8,7 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-from app.config import get_env, get_int_env, get_required_env
+from app.config import DEFAULT_SOLDCOMPS_BASE_URL, get_env, get_int_env, get_required_env
 from app.models import (
     CertType,
     ComicComp,
@@ -20,7 +21,7 @@ from app.models import (
 from app.providers.base import CompsProvider
 
 
-DEFAULT_SOLDCOMPS_BASE_URL = "https://sold-comps.com/v1/scrape"
+logger = logging.getLogger(__name__)
 
 
 class SoldCompsProvider(CompsProvider):
@@ -169,7 +170,33 @@ class SoldCompsProvider(CompsProvider):
             response = httpx.get(self.base_url, params=params, headers=headers, timeout=self.timeout_seconds)
             response.raise_for_status()
             data = response.json()
+        except httpx.HTTPStatusError as exc:
+            logger.exception(
+                "SoldComps HTTP error",
+                extra={
+                    "url": str(exc.request.url) if exc.request else self.base_url,
+                    "status_code": exc.response.status_code if exc.response else None,
+                    "response_text": exc.response.text[:500] if exc.response and exc.response.text else None,
+                },
+            )
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "sold_comps_provider_error",
+                    "message": "Failed to retrieve sold comps from the configured provider.",
+                },
+            ) from exc
+        except ValueError as exc:
+            logger.exception("SoldComps returned invalid JSON")
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "sold_comps_provider_error",
+                    "message": "Failed to retrieve sold comps from the configured provider.",
+                },
+            ) from exc
         except Exception as exc:
+            logger.exception("SoldComps request failed")
             raise HTTPException(
                 status_code=502,
                 detail={
