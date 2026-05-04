@@ -91,9 +91,8 @@ class SoldCompsProvider(CompsProvider):
 
         groups: list[IssueConditionCompGroup] = []
         for issue_number, condition in sorted(grouped.keys(), key=lambda key: (int(key[0]), key[1])):
-            comps = sorted(grouped[(issue_number, condition)], key=lambda comp: comp.sale_date, reverse=True)[
-                :max_results_per_group
-            ]
+            comps = _dedupe_comps(grouped[(issue_number, condition)])
+            comps = sorted(comps, key=lambda comp: comp.sale_date, reverse=True)[:max_results_per_group]
             sales = [
                 CompSale(
                     title=comp.title,
@@ -484,7 +483,7 @@ def _matches_series_start_year(title: str, series_start_year: int) -> bool:
     years = {int(match) for match in re.findall(r"\b(19\d{2}|20\d{2})\b", title)}
     if not years:
         return True
-    return series_start_year in years
+    return any(series_start_year <= year <= 1979 for year in years)
 
 
 def _has_variant_or_relaunch_markers(title: str) -> bool:
@@ -539,3 +538,15 @@ def _accepted_issue_numbers(
         if issue_start <= int(parsed_issue) <= issue_end:
             covered_issues.add(parsed_issue)
     return covered_issues
+
+
+def _dedupe_comps(comps: list[ComicComp]) -> list[ComicComp]:
+    seen_keys: set[tuple[str, str, str]] = set()
+    deduped: list[ComicComp] = []
+    for comp in comps:
+        key = (_normalize_text(comp.title), str(comp.sale_price), comp.sale_date.isoformat())
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(comp)
+    return deduped

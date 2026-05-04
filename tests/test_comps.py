@@ -973,6 +973,59 @@ def test_soldcomps_provider_accepts_missing_title_year_for_vintage_run(monkeypat
     assert payload["groups"][0]["sales"][0]["title"] == "X-Men #4 CGC 4.0"
 
 
+def test_soldcomps_provider_accepts_issue_year_within_vintage_window(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "keyword": "X-Men 1963 CGC",
+                "totalItems": 2,
+                "hasNextPage": False,
+                "items": [
+                    {
+                        "itemId": "xmen-4-1964",
+                        "title": "X-Men #4 (Marvel, 1964) CGC 4.0",
+                        "soldPrice": "1200.00",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-1964",
+                    },
+                    {
+                        "itemId": "xmen-4-1991",
+                        "title": "X-Men #4 (Marvel, 1991) CGC 9.6",
+                        "soldPrice": "89.00",
+                        "endedAt": "2026-04-13T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-1991",
+                    },
+                ],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "series_start_year": 1963,
+            "issue_start": 4,
+            "issue_end": 4,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 1
+    assert payload["groups"][0]["sales"][0]["title"] == "X-Men #4 (Marvel, 1964) CGC 4.0"
+
+
 def test_soldcomps_provider_dedupes_identical_sales_across_queries(monkeypatch) -> None:
     requested_keywords: list[str] = []
 
@@ -1034,6 +1087,59 @@ def test_soldcomps_provider_dedupes_identical_sales_across_queries(monkeypatch) 
     assert response.status_code == 200
     payload = response.json()
     assert requested_keywords == ["X-Men 1963 CGC", "X-Men #5 1963 CGC"]
+    assert payload["group_count"] == 1
+    assert payload["groups"][0]["usable_count"] == 1
+
+
+def test_soldcomps_provider_dedupes_same_sale_with_different_item_ids(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "keyword": "X-Men 1963 CGC",
+                "totalItems": 2,
+                "hasNextPage": False,
+                "items": [
+                    {
+                        "itemId": "xmen-4-a",
+                        "title": "X-Men #4 (Marvel, 1964) CGC 4.0",
+                        "soldPrice": "1200.00",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-a",
+                    },
+                    {
+                        "itemId": "xmen-4-b",
+                        "title": "X-Men #4 (Marvel, 1964) CGC 4.0",
+                        "soldPrice": "1200.00",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-b",
+                    },
+                ],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "series_start_year": 1963,
+            "issue_start": 4,
+            "issue_end": 4,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
     assert payload["group_count"] == 1
     assert payload["groups"][0]["usable_count"] == 1
 
