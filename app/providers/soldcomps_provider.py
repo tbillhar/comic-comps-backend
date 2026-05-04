@@ -161,7 +161,6 @@ class SoldCompsProvider(CompsProvider):
 
     def _fetch_items(self, keyword: str) -> list[dict[str, Any]]:
         headers = {
-            "x-api-key": self.api_key,
             "Authorization": f"Bearer {self.api_key}",
         }
         params = {"keyword": keyword}

@@ -164,7 +164,7 @@ $env:SOLDCOMPS_API_KEY = "your-key"
 Optional SoldComps setting:
 
 ```powershell
-$env:SOLDCOMPS_BASE_URL = "https://sold-comps.com/v1/scrape"
+$env:SOLDCOMPS_BASE_URL = "https://api.sold-comps.com/v1/scrape"
 ```
 
 The provider returns sold listings and the service keeps the `POST /comps` response contract stable.
