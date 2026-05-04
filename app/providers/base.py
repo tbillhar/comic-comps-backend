@@ -15,6 +15,7 @@ class CompsProvider(ABC):
     def search_series_range(
         self,
         series: str,
+        series_start_year: int | None,
         issue_start: int,
         issue_end: int,
         cert_type: CertType,

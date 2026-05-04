@@ -78,6 +78,7 @@ def search_series_range(
     try:
         return selected_provider.search_series_range(
             series=query.series,
+            series_start_year=query.series_start_year,
             issue_start=query.issue_start,
             issue_end=query.issue_end,
             cert_type=query.cert_type,

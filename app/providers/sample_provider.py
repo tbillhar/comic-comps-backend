@@ -138,12 +138,13 @@ class SampleCompsProvider(CompsProvider):
     def search_series_range(
         self,
         series: str,
+        series_start_year: int | None,
         issue_start: int,
         issue_end: int,
         cert_type: CertType,
         max_results_per_group: int,
     ) -> ComicSeriesRangeResponse:
-        broad_query = _range_query(series=series, cert_type=cert_type)
+        broad_query = _range_query(series=series, cert_type=cert_type, series_start_year=series_start_year)
         filtered_comps = [
             comp
             for comp in SAMPLE_COMPS
@@ -188,6 +189,7 @@ class SampleCompsProvider(CompsProvider):
 
         return ComicSeriesRangeResponse(
             series=series,
+            series_start_year=series_start_year,
             issue_start=issue_start,
             issue_end=issue_end,
             cert_type=cert_type,
@@ -214,6 +216,8 @@ def _cert_type_matches(comp: ComicComp, cert_type: CertType) -> bool:
     return comp.grade.casefold() == "raw"
 
 
-def _range_query(series: str, cert_type: CertType) -> str:
+def _range_query(series: str, cert_type: CertType, series_start_year: int | None = None) -> str:
     suffix = "CGC" if cert_type == CertType.CGC else "Raw"
+    if series_start_year is not None:
+        return f"{series} {series_start_year} {suffix}"
     return f"{series} {suffix}"

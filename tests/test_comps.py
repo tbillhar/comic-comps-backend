@@ -103,6 +103,7 @@ def test_search_series_range_groups_sample_results() -> None:
         "/comps/range",
         json={
             "series": "X-Men",
+            "series_start_year": 1963,
             "issue_start": 1,
             "issue_end": 10,
             "cert_type": "cgc",
@@ -113,7 +114,8 @@ def test_search_series_range_groups_sample_results() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["series"] == "X-Men"
-    assert payload["broad_query"] == "X-Men CGC"
+    assert payload["series_start_year"] == 1963
+    assert payload["broad_query"] == "X-Men 1963 CGC"
     assert payload["group_count"] == 1
     assert payload["groups"][0]["issue_number"] == "1"
     assert payload["groups"][0]["condition"] == "CGC 4.0"
@@ -682,7 +684,7 @@ def test_soldcomps_provider_groups_range_results(monkeypatch) -> None:
 
         def json(self) -> dict[str, object]:
             return {
-                "keyword": "X-Men CGC",
+                "keyword": "X-Men 1963 CGC",
                 "totalItems": 3,
                 "hasNextPage": False,
                 "items": [
@@ -714,7 +716,7 @@ def test_soldcomps_provider_groups_range_results(monkeypatch) -> None:
             }
 
     def fake_get(*args, **kwargs) -> FakeResponse:
-        assert kwargs["params"]["keyword"] == "X-Men CGC"
+        assert kwargs["params"]["keyword"] == "X-Men 1963 CGC"
         return FakeResponse()
 
     monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
@@ -725,6 +727,7 @@ def test_soldcomps_provider_groups_range_results(monkeypatch) -> None:
         "/comps/range",
         json={
             "series": "X-Men",
+            "series_start_year": 1963,
             "issue_start": 1,
             "issue_end": 2,
             "cert_type": "cgc",
@@ -739,6 +742,78 @@ def test_soldcomps_provider_groups_range_results(monkeypatch) -> None:
     assert payload["groups"][0]["condition"] == "CGC 4.0"
     assert payload["groups"][1]["condition"] == "CGC 5.5"
     assert payload["groups"][2]["issue_number"] == "2"
+
+
+def test_soldcomps_provider_filters_relaunches_when_series_start_year_is_supplied(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "keyword": "X-Men 1963 CGC",
+                "totalItems": 4,
+                "hasNextPage": False,
+                "items": [
+                    {
+                        "itemId": "xmen-1-1963",
+                        "title": "X-Men #1 (Marvel, 1963) CGC 4.0",
+                        "soldPrice": "6401.69",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-1-1963",
+                    },
+                    {
+                        "itemId": "xmen-1-1991",
+                        "title": "X-Men #1 Special Edition, Jim Lee Marvel 10/91 CGC 9.0",
+                        "soldPrice": "26.79",
+                        "endedAt": "2026-04-13T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-1-1991",
+                    },
+                    {
+                        "itemId": "prof-x",
+                        "title": "Professor Xavier and the X-Men #1 CGC 9.8",
+                        "soldPrice": "165.00",
+                        "endedAt": "2026-04-13T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/prof-x",
+                    },
+                    {
+                        "itemId": "xmen-2-1963",
+                        "title": "X-Men #2 (Marvel, 1963) CGC 4.0",
+                        "soldPrice": "747.95",
+                        "endedAt": "2026-04-22T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-2-1963",
+                    },
+                ],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        assert kwargs["params"]["keyword"] == "X-Men 1963 CGC"
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "series_start_year": 1963,
+            "issue_start": 1,
+            "issue_end": 2,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 2
+    titles = [sale["title"] for group in payload["groups"] for sale in group["sales"]]
+    assert "X-Men #1 (Marvel, 1963) CGC 4.0" in titles
+    assert "X-Men #2 (Marvel, 1963) CGC 4.0" in titles
+    assert "X-Men #1 Special Edition, Jim Lee Marvel 10/91 CGC 9.0" not in titles
+    assert "Professor Xavier and the X-Men #1 CGC 9.8" not in titles
 
 
 def test_cors_allows_local_frontend_origin() -> None:

@@ -48,14 +48,16 @@ class SoldCompsProvider(CompsProvider):
     def search_series_range(
         self,
         series: str,
+        series_start_year: int | None,
         issue_start: int,
         issue_end: int,
         cert_type: CertType,
         max_results_per_group: int,
     ) -> ComicSeriesRangeResponse:
-        broad_query = _range_query(series=series, cert_type=cert_type)
+        broad_query = _range_query(series=series, series_start_year=series_start_year, cert_type=cert_type)
         items = self._fetch_items(keyword=broad_query)
         raw_item_count = len(items)
+        series_terms = _series_terms(series)
 
         grouped: dict[tuple[str, str], list[ComicComp]] = {}
         for item in items:
@@ -63,11 +65,15 @@ class SoldCompsProvider(CompsProvider):
             if comp is None or not _cert_type_matches(comp.title, cert_type):
                 continue
 
-            parsed_issue = _extract_issue_number(comp.title)
+            parsed_issue = _extract_issue_number(comp.title, series_terms)
             parsed_condition = _extract_cgc_grade(comp.title) if cert_type == CertType.CGC else "Raw"
             if parsed_issue is None or parsed_condition is None:
                 continue
-            if not series.casefold().replace("-", " ") in comp.title.casefold().replace("-", " "):
+            if not _has_matching_series_phrase(comp.title, series_terms):
+                continue
+            if _has_variant_or_relaunch_markers(comp.title):
+                continue
+            if series_start_year is not None and not _matches_series_start_year(comp.title, series_start_year):
                 continue
             if not issue_start <= int(parsed_issue) <= issue_end:
                 continue
@@ -105,6 +111,7 @@ class SoldCompsProvider(CompsProvider):
 
         return ComicSeriesRangeResponse(
             series=series,
+            series_start_year=series_start_year,
             issue_start=issue_start,
             issue_end=issue_end,
             cert_type=cert_type,
@@ -281,10 +288,29 @@ def _decimal_value(item: dict[str, Any], key: str) -> Decimal | None:
         return None
 
 
-def _extract_issue_number(title: str) -> str | None:
+def _extract_issue_number(title: str, series_terms: list[str] | None = None) -> str | None:
+    direct_match = re.search(r"#\s*(\d{1,5})\b", title)
+    if direct_match:
+        return direct_match.group(1)
+
     normalized = _normalize_text(title)
-    match = re.search(r"\b(\d{1,5})\b", normalized)
-    return match.group(1) if match else None
+    tokens = normalized.split()
+
+    if series_terms:
+        for start_index in range(len(tokens)):
+            token_slice = tokens[start_index : start_index + len(series_terms)]
+            if token_slice == series_terms:
+                search_tokens = tokens[start_index + len(series_terms) :]
+                for token in search_tokens:
+                    if token.isdigit() and 1 <= int(token) <= 99999:
+                        return token
+                break
+
+    for token in tokens:
+        if token.isdigit() and 1 <= int(token) <= 99999:
+            return token
+
+    return None
 
 
 def _extract_cgc_grade(title: str) -> str | None:
@@ -300,6 +326,44 @@ def _cert_type_matches(title: str, cert_type: CertType) -> bool:
     return "cgc" not in normalized_title
 
 
-def _range_query(series: str, cert_type: CertType) -> str:
+def _range_query(series: str, series_start_year: int | None, cert_type: CertType) -> str:
     suffix = "CGC" if cert_type == CertType.CGC else "raw"
+    if series_start_year is not None:
+        return f"{series} {series_start_year} {suffix}"
     return f"{series} {suffix}"
+
+
+def _series_terms(series: str) -> list[str]:
+    return _normalize_text(series).split()
+
+
+def _has_matching_series_phrase(title: str, series_terms: list[str]) -> bool:
+    normalized_title = _normalize_text(title)
+    tokens = normalized_title.split()
+    start_index = 0
+    while start_index < len(tokens) and tokens[start_index] in {"the"}:
+        start_index += 1
+    return tokens[start_index : start_index + len(series_terms)] == series_terms
+
+
+def _matches_series_start_year(title: str, series_start_year: int) -> bool:
+    years = {int(match) for match in re.findall(r"\b(19\d{2}|20\d{2})\b", title)}
+    if not years:
+        return False
+    return series_start_year in years
+
+
+def _has_variant_or_relaunch_markers(title: str) -> bool:
+    normalized_title = _normalize_text(title)
+    markers = {
+        "special edition",
+        "variant",
+        "facsimile",
+        "reprint",
+        "annual",
+        "one shot",
+        "limited series",
+        "mini series",
+        "mini-series",
+    }
+    return any(marker in normalized_title for marker in markers)

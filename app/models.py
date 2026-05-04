@@ -68,6 +68,12 @@ class ComicCompSearchResponse(BaseModel):
 
 class ComicSeriesRangeQuery(BaseModel):
     series: str = Field(..., min_length=1, max_length=120, description="Series name, for example X-Men.")
+    series_start_year: int | None = Field(
+        default=None,
+        ge=1900,
+        le=2100,
+        description="Optional series launch year used to disambiguate relaunches and variants.",
+    )
     issue_start: int = Field(..., ge=1, le=99999, description="Starting issue number, inclusive.")
     issue_end: int = Field(..., ge=1, le=99999, description="Ending issue number, inclusive.")
     cert_type: CertType = Field(..., description="Certification mode selected by the user.")
@@ -107,6 +113,7 @@ class IssueConditionCompGroup(BaseModel):
 
 class ComicSeriesRangeResponse(BaseModel):
     series: str
+    series_start_year: int | None = None
     issue_start: int
     issue_end: int
     cert_type: CertType
