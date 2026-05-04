@@ -920,6 +920,124 @@ def test_soldcomps_provider_filters_relaunches_when_series_start_year_is_supplie
     assert "Professor Xavier and the X-Men #1 CGC 9.8" not in titles
 
 
+def test_soldcomps_provider_accepts_missing_title_year_for_vintage_run(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "keyword": "X-Men 1963 CGC",
+                "totalItems": 2,
+                "hasNextPage": False,
+                "items": [
+                    {
+                        "itemId": "xmen-4-no-year",
+                        "title": "X-Men #4 CGC 4.0",
+                        "soldPrice": "1200.00",
+                        "endedAt": "2026-04-12T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-no-year",
+                    },
+                    {
+                        "itemId": "xmen-4-modern",
+                        "title": "X-Men #4 Special Edition CGC 9.8",
+                        "soldPrice": "99.00",
+                        "endedAt": "2026-04-13T00:00:00.000Z",
+                        "url": "https://ebay.com/itm/xmen-4-modern",
+                    },
+                ],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "series_start_year": 1963,
+            "issue_start": 4,
+            "issue_end": 4,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 1
+    assert payload["groups"][0]["sales"][0]["title"] == "X-Men #4 CGC 4.0"
+
+
+def test_soldcomps_provider_dedupes_identical_sales_across_queries(monkeypatch) -> None:
+    requested_keywords: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, keyword: str) -> None:
+            self.keyword = keyword
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            duplicate_item = {
+                "title": "X-Men #4 CGC 4.0",
+                "soldPrice": "1200.00",
+                "endedAt": "2026-04-12T00:00:00.000Z",
+                "url": "https://ebay.com/itm/xmen-4",
+            }
+            if self.keyword == "X-Men 1963 CGC":
+                return {
+                    "keyword": self.keyword,
+                    "totalItems": 1,
+                    "hasNextPage": False,
+                    "items": [duplicate_item],
+                }
+            if self.keyword == "X-Men #5 1963 CGC":
+                return {
+                    "keyword": self.keyword,
+                    "totalItems": 1,
+                    "hasNextPage": False,
+                    "items": [duplicate_item],
+                }
+            return {
+                "keyword": self.keyword,
+                "totalItems": 0,
+                "hasNextPage": False,
+                "items": [],
+            }
+
+    def fake_get(*args, **kwargs) -> FakeResponse:
+        requested_keywords.append(kwargs["params"]["keyword"])
+        return FakeResponse(kwargs["params"]["keyword"])
+
+    monkeypatch.setenv("COMPS_PROVIDER", "soldcomps")
+    monkeypatch.setenv("SOLDCOMPS_API_KEY", "test-key")
+    monkeypatch.setattr("app.providers.soldcomps_provider.httpx.get", fake_get)
+
+    response = client.post(
+        "/comps/range",
+        json={
+            "series": "X-Men",
+            "series_start_year": 1963,
+            "issue_start": 4,
+            "issue_end": 5,
+            "cert_type": "cgc",
+            "max_results_per_group": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert requested_keywords == ["X-Men 1963 CGC", "X-Men #5 1963 CGC"]
+    assert payload["group_count"] == 1
+    assert payload["groups"][0]["usable_count"] == 1
+
+
 def test_soldcomps_provider_inferrs_original_series_authority(monkeypatch) -> None:
     class FakeResponse:
         def raise_for_status(self) -> None:
@@ -1029,7 +1147,7 @@ def test_soldcomps_range_debug_returns_rejection_reasons(monkeypatch) -> None:
     modern = next(decision for decision in payload["decisions"] if decision["title"] == "X-Men #4 Special Edition CGC 9.8")
     out_of_range = next(decision for decision in payload["decisions"] if decision["title"] == "X-Men #12 (Marvel, 1963) CGC 4.0")
     assert matched["title"] == "X-Men #4 (Marvel, 1963) CGC 4.0"
-    assert modern["reasons"] == ["variant_or_relaunch_marker", "series_start_year_mismatch:1963"]
+    assert modern["reasons"] == ["variant_or_relaunch_marker"]
     assert "issue_out_of_range:4-10" in out_of_range["reasons"]
 
 

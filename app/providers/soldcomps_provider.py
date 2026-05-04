@@ -483,7 +483,7 @@ def _has_matching_series_phrase(title: str, series_terms: list[str]) -> bool:
 def _matches_series_start_year(title: str, series_start_year: int) -> bool:
     years = {int(match) for match in re.findall(r"\b(19\d{2}|20\d{2})\b", title)}
     if not years:
-        return False
+        return True
     return series_start_year in years
 
 
@@ -503,11 +503,10 @@ def _has_variant_or_relaunch_markers(title: str) -> bool:
     return any(marker in normalized_title for marker in markers)
 
 
-def _item_dedupe_key(item: dict[str, Any]) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+def _item_dedupe_key(item: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    normalized_title = _normalize_text(_string_value(item, "title") or "")
     return (
-        _string_value(item, "itemId"),
-        _string_value(item, "url"),
-        _string_value(item, "title"),
+        normalized_title or None,
         _string_value(item, "endedAt"),
         _string_value(item, "soldPrice"),
     )
